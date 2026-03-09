@@ -1,0 +1,40 @@
+const express = require('express');
+const systemRoutes = require('../modules/system/system.routes');
+const authRoutes = require('../modules/auth/auth.routes');
+const clinicsRoutes = require('../modules/clinics/clinics.routes');
+const clinicSettingsRoutes = require('../modules/clinic-settings/clinic-settings.routes');
+const clinicIntegrationsRoutes = require('../modules/clinic-integrations/clinic-integrations.routes');
+const clinicServicesRoutes = require('../modules/clinic-services/clinic-services.routes');
+const usersRoutes = require('../modules/users/users.routes');
+const staffRequestsRoutes = require('../modules/staff-requests/staff-requests.routes');
+const leadsRoutes = require('../modules/leads/leads.routes');
+const followupsRoutes = require('../modules/followups/followups.routes');
+const appointmentsRoutes = require('../modules/appointments/appointments.routes');
+const publicFormsRoutes = require('../modules/public-forms/public-forms.routes');
+const reviewsRoutes = require('../modules/reviews/reviews.routes');
+const messagesRoutes = require('../modules/messages/messages.routes');
+const supportTicketsRoutes = require('../modules/support-tickets/support-tickets.routes');
+const notificationsRoutes = require('../modules/notifications/notifications.routes');
+const dashboardsRoutes = require('../modules/dashboards/dashboards.routes');
+
+const router = express.Router();
+
+router.use('/system', systemRoutes);
+router.use('/auth', authRoutes);
+router.use('/clinics', clinicsRoutes);
+router.use('/clinic-settings', clinicSettingsRoutes);
+router.use('/clinic-integrations', clinicIntegrationsRoutes);
+router.use('/clinic-services', clinicServicesRoutes);
+router.use('/users', usersRoutes);
+router.use('/staff-requests', staffRequestsRoutes);
+router.use('/leads', leadsRoutes);
+router.use('/followups', followupsRoutes);
+router.use('/appointments', appointmentsRoutes);
+router.use('/public-forms', publicFormsRoutes);
+router.use('/reviews', reviewsRoutes);
+router.use('/messages', messagesRoutes);
+router.use('/support-tickets', supportTicketsRoutes);
+router.use('/notifications', notificationsRoutes);
+router.use('/dashboards', dashboardsRoutes);
+
+module.exports = router;
