@@ -3,29 +3,34 @@ const db = require('../../db');
 async function getAdminSummary(client = null) {
   const query = `
     SELECT
-      (SELECT COUNT(*)::int FROM clinics) AS total_clinics,
-      (SELECT COUNT(*)::int FROM leads) AS total_leads,
-      (SELECT COUNT(*)::int FROM leads WHERE created_at >= NOW() - INTERVAL '7 days') AS leads_last_7_days,
-      (SELECT COUNT(*)::int FROM leads WHERE created_at >= NOW() - INTERVAL '30 days') AS leads_last_30_days,
-      (SELECT COUNT(*)::int FROM appointments WHERE created_at >= NOW() - INTERVAL '7 days') AS bookings_last_7_days,
-      (SELECT COUNT(*)::int FROM appointments WHERE created_at >= NOW() - INTERVAL '30 days') AS bookings_last_30_days,
-      (SELECT COUNT(*)::int FROM appointments WHERE status = 'completed') AS completed_appointments,
+      (SELECT COUNT(*)::int FROM clinics c) AS total_clinics,
+      (SELECT COUNT(*)::int FROM leads l) AS total_leads,
+      (SELECT COUNT(*)::int FROM leads l WHERE l.created_at >= NOW() - INTERVAL '7 days') AS leads_last_7_days,
+      (SELECT COUNT(*)::int FROM leads l WHERE l.created_at >= NOW() - INTERVAL '30 days') AS leads_last_30_days,
+      (SELECT COUNT(*)::int FROM appointments a WHERE a.created_at >= NOW() - INTERVAL '7 days') AS bookings_last_7_days,
+      (SELECT COUNT(*)::int FROM appointments a WHERE a.created_at >= NOW() - INTERVAL '30 days') AS bookings_last_30_days,
+      (SELECT COUNT(*)::int FROM appointments a WHERE a.status = 'completed') AS completed_appointments,
       (
         SELECT COALESCE(
           ROUND(
             (
-              COUNT(*) FILTER (WHERE status = 'no_show')::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE status IN ('booked', 'rescheduled', 'completed', 'no_show', 'cancelled')), 0)
+              COUNT(*) FILTER (WHERE a.status = 'no_show')::numeric
+              / NULLIF(
+                  COUNT(*) FILTER (
+                    WHERE a.status IN ('booked', 'rescheduled', 'completed', 'no_show', 'cancelled')
+                  ),
+                  0
+                )
             ) * 100,
             2
           ),
           0
         )
-        FROM appointments
-      ) AS no_show_rate_pct,
-      (SELECT COUNT(*)::int FROM staff_change_requests WHERE status = 'pending') AS pending_staff_requests,
-      (SELECT COUNT(*)::int FROM message_logs WHERE status = 'failed') AS failed_message_logs,
-      (SELECT COUNT(*)::int FROM appointments WHERE sync_status = 'failed') AS failed_calendar_syncs
+        FROM appointments a
+      ) AS no_show_rate,
+      (SELECT COUNT(*)::int FROM staff_change_requests scr WHERE scr.status = 'pending') AS pending_staff_requests,
+      (SELECT COUNT(*)::int FROM message_logs ml WHERE ml.status = 'failed') AS failed_message_count,
+      (SELECT COUNT(*)::int FROM appointments a WHERE a.sync_status = 'failed') AS failed_calendar_sync_count
   `;
 
   const result = await db.query(query, [], client);
@@ -92,10 +97,10 @@ async function getDuplicateWarningsByClinic(client = null) {
     SELECT
       clinic_id,
       clinic_name,
-      COUNT(*)::int AS duplicate_groups
+      COUNT(*)::int AS duplicate_warning_count
     FROM v_clinic_duplicate_phone_warnings
     GROUP BY clinic_id, clinic_name
-    ORDER BY duplicate_groups DESC, clinic_name ASC
+    ORDER BY duplicate_warning_count DESC, clinic_name ASC
   `;
 
   const result = await db.query(query, [], client);
@@ -127,13 +132,13 @@ async function getClinicsNeedingAttention(client = null) {
       clinic_id,
       clinic_name,
       clinic_status,
-      duplicate_phone_groups,
+      duplicate_phone_groups AS duplicate_warning_count,
       unassigned_active_leads,
       open_support_tickets,
       failed_calendar_syncs,
       inactive_receptionists,
       active_receptionists,
-      has_no_active_receptionist
+      has_no_active_receptionist AS no_active_receptionist
     FROM v_clinic_attention_flags
     WHERE duplicate_phone_groups > 0
        OR unassigned_active_leads > 0
@@ -175,16 +180,23 @@ async function getPendingStaffRequests(client = null) {
 async function getSupportTicketsByClinic(client = null) {
   const query = `
     SELECT
-      clinic_id,
+      st.clinic_id,
       c.name AS clinic_name,
-      COUNT(*)::int AS total_tickets,
-      COUNT(*) FILTER (WHERE status IN ('open', 'in_progress'))::int AS open_tickets,
-      COUNT(*) FILTER (WHERE status = 'resolved')::int AS resolved_tickets,
-      COUNT(*) FILTER (WHERE status = 'closed')::int AS closed_tickets
+      c.status AS clinic_status,
+      COUNT(st.id)::int AS total_tickets,
+      COUNT(st.id) FILTER (
+        WHERE st.status IN ('open', 'pending', 'in_progress')
+      )::int AS open_support_tickets,
+      COUNT(st.id) FILTER (
+        WHERE st.status = 'resolved'
+      )::int AS resolved_tickets,
+      COUNT(st.id) FILTER (
+        WHERE st.status = 'closed'
+      )::int AS closed_tickets
     FROM support_tickets st
     INNER JOIN clinics c ON c.id = st.clinic_id
-    GROUP BY clinic_id, c.name
-    ORDER BY open_tickets DESC, total_tickets DESC, clinic_name ASC
+    GROUP BY st.clinic_id, c.name, c.status
+    ORDER BY open_support_tickets DESC, total_tickets DESC, clinic_name ASC
   `;
 
   const result = await db.query(query, [], client);
