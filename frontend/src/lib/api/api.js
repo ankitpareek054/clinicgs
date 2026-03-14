@@ -53,6 +53,29 @@ async function request(path, options = {}) {
   return data;
 }
 
+export function buildQuery(params = {}) {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+
+    searchParams.set(key, String(value));
+  });
+
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
+}
+
+export function extractApiData(payload, fallback = null) {
+  if (payload && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data;
+  }
+
+  return payload ?? fallback;
+}
+
 export const api = {
   get(path, options = {}) {
     return request(path, { ...options, method: "GET" });
