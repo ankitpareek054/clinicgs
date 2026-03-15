@@ -36,21 +36,7 @@ import { listLeads } from "../../../lib/receptionist/leadsApi";
 
 const TIME_OPTIONS = buildTimeOptions(15);
 
-
-
-const APPOINTMENT_SORT_OPTIONS = [
-
-  { value: "start_asc", label: "Start time earliest" },
-
-  { value: "start_desc", label: "Start time latest" },
-
-  { value: "patient_asc", label: "Patient A-Z" },
-
-  { value: "patient_desc", label: "Patient Z-A" },
-
-  { value: "status_asc", label: "Status A-Z" },
-
-];
+const EMPTY_SORT = { key: "", direction: "" };
 
 
 
@@ -270,7 +256,49 @@ function compareText(a, b) {
 
 
 
-function sortAppointmentRows(rows, sortKey, leadsById) {
+function getNextSortState(currentSort, key) {
+
+  if (currentSort.key !== key) {
+
+    return { key, direction: "asc" };
+
+  }
+
+
+
+  if (currentSort.direction === "asc") {
+
+    return { key, direction: "desc" };
+
+  }
+
+
+
+  return EMPTY_SORT;
+
+}
+
+
+
+function getSortArrow(sortState, key) {
+
+  if (sortState.key !== key) return "";
+
+  return sortState.direction === "asc" ? "↑" : "↓";
+
+}
+
+
+
+function sortAppointmentRows(rows, sortState, leadsById) {
+
+  if (!sortState.key || !sortState.direction) {
+
+    return rows;
+
+  }
+
+
 
   const next = [...rows];
 
@@ -284,45 +312,109 @@ function sortAppointmentRows(rows, sortKey, leadsById) {
 
 
 
-    if (sortKey === "start_desc") {
+    if (sortState.key === "patient") {
 
-      return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+      return sortState.direction === "asc"
 
-    }
+        ? compareText(aLead?.patientName, bLead?.patientName)
 
-
-
-    if (sortKey === "patient_asc") {
-
-      return compareText(aLead?.patientName, bLead?.patientName);
+        : compareText(bLead?.patientName, aLead?.patientName);
 
     }
 
 
 
-    if (sortKey === "patient_desc") {
+    if (sortState.key === "status") {
 
-      return compareText(bLead?.patientName, aLead?.patientName);
+      return sortState.direction === "asc"
 
-    }
+        ? compareText(a.status, b.status)
 
-
-
-    if (sortKey === "status_asc") {
-
-      return compareText(a.status, b.status);
+        : compareText(b.status, a.status);
 
     }
 
 
 
-    return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+    if (sortState.key === "phone") {
+
+      return sortState.direction === "asc"
+
+        ? compareText(aLead?.phone, bLead?.phone)
+
+        : compareText(bLead?.phone, aLead?.phone);
+
+    }
+
+
+
+    if (sortState.key === "start") {
+
+      return sortState.direction === "asc"
+
+        ? new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+
+        : new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+
+    }
+
+
+
+    if (sortState.key === "end") {
+
+      return sortState.direction === "asc"
+
+        ? new Date(a.endTime).getTime() - new Date(b.endTime).getTime()
+
+        : new Date(b.endTime).getTime() - new Date(a.endTime).getTime();
+
+    }
+
+
+
+    return 0;
 
   });
 
 
 
   return next;
+
+}
+
+
+
+function isToday(dateValue) {
+
+  if (!dateValue) return false;
+
+
+
+  const date = new Date(dateValue);
+
+  const now = new Date();
+
+
+
+  return (
+
+    date.getFullYear() === now.getFullYear() &&
+
+    date.getMonth() === now.getMonth() &&
+
+    date.getDate() === now.getDate()
+
+  );
+
+}
+
+
+
+function isUpcoming(dateValue) {
+
+  if (!dateValue) return false;
+
+  return new Date(dateValue).getTime() >= Date.now();
 
 }
 
@@ -336,7 +428,7 @@ export default function AppointmentsPage() {
 
   const [showFilters, setShowFilters] = useState(false);
 
-  const [sortKey, setSortKey] = useState("start_asc");
+  const [sortState, setSortState] = useState(EMPTY_SORT);
 
 
 
@@ -476,9 +568,9 @@ export default function AppointmentsPage() {
 
 
 
-    return sortAppointmentRows(rows, sortKey, leadsById);
+    return sortAppointmentRows(rows, sortState, leadsById);
 
-  }, [appointments, appliedFilters.search, leadsById, sortKey]);
+  }, [appointments, appliedFilters.search, leadsById, sortState]);
 
 
 
@@ -487,6 +579,24 @@ export default function AppointmentsPage() {
     return Boolean(appliedFilters.status || appliedFilters.search);
 
   }, [appliedFilters]);
+
+
+
+  const appointmentOverview = useMemo(() => {
+
+    return {
+
+      total: appointments.length,
+
+      today: appointments.filter((item) => isToday(item.startTime)).length,
+
+      upcoming: appointments.filter((item) => isUpcoming(item.startTime)).length,
+
+      completed: appointments.filter((item) => item.status === "completed").length,
+
+    };
+
+  }, [appointments]);
 
 
 
@@ -784,6 +894,16 @@ export default function AppointmentsPage() {
 
 
 
+  async function handleRefresh() {
+
+    setSortState(EMPTY_SORT);
+
+    await loadPage();
+
+  }
+
+
+
   async function handleCreateAppointment(event) {
 
     event.preventDefault();
@@ -965,7 +1085,73 @@ export default function AppointmentsPage() {
       )}
 
 
- <section className="page-card appointment-create-card">
+
+      <section className="page-card appointments-summary-card">
+
+        <div className="section-heading">
+
+          <div>
+
+            <h2>Appointment overview</h2>
+
+            <p className="muted">
+
+              Quick view of the clinic schedule before you open the table.
+
+            </p>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="appointments-summary-grid">
+
+          <article className="appointment-summary-tile">
+
+            <span className="appointment-summary-label">Total appointments</span>
+
+            <strong>{appointmentOverview.total}</strong>
+
+          </article>
+
+
+
+          <article className="appointment-summary-tile">
+
+            <span className="appointment-summary-label">Today</span>
+
+            <strong>{appointmentOverview.today}</strong>
+
+          </article>
+
+
+
+          <article className="appointment-summary-tile">
+
+            <span className="appointment-summary-label">Upcoming</span>
+
+            <strong>{appointmentOverview.upcoming}</strong>
+
+          </article>
+
+
+
+          <article className="appointment-summary-tile">
+
+            <span className="appointment-summary-label">Completed</span>
+
+            <strong>{appointmentOverview.completed}</strong>
+
+          </article>
+
+        </div>
+
+      </section>
+
+
+      <section className="page-card appointment-create-card">
 
         <div className="section-heading">
 
@@ -1216,7 +1402,6 @@ export default function AppointmentsPage() {
       </section>
 
 
-
       <section className="page-card">
 
         <div className="section-heading">
@@ -1281,47 +1466,13 @@ export default function AppointmentsPage() {
 
               className="secondary-button"
 
-              onClick={loadPage}
+              onClick={handleRefresh}
 
             >
 
               Refresh
 
             </button>
-
-          </div>
-
-        </div>
-
-
-
-        <div className="appointment-list-toolbar-row">
-
-          <div className="appointment-list-sort">
-
-            <label htmlFor="appointment-sort">Sort by</label>
-
-            <select
-
-              id="appointment-sort"
-
-              value={sortKey}
-
-              onChange={(event) => setSortKey(event.target.value)}
-
-            >
-
-              {APPOINTMENT_SORT_OPTIONS.map((option) => (
-
-                <option key={option.value} value={option.value}>
-
-                  {option.label}
-
-                </option>
-
-              ))}
-
-            </select>
 
           </div>
 
@@ -1457,15 +1608,175 @@ export default function AppointmentsPage() {
 
                 <tr>
 
-                  <th>Patient</th>
+                  <th>
 
-                  <th>Status</th>
+                    <button
 
-                  <th>Phone</th>
+                      type="button"
 
-                  <th>Start</th>
+                      className="table-sort-button"
 
-                  <th>End</th>
+                      onClick={() =>
+
+                        setSortState((current) => getNextSortState(current, "patient"))
+
+                      }
+
+                    >
+
+                      Patient
+
+                      {getSortArrow(sortState, "patient") && (
+
+                        <span className="table-sort-arrow">
+
+                          {getSortArrow(sortState, "patient")}
+
+                        </span>
+
+                      )}
+
+                    </button>
+
+                  </th>
+
+
+
+                  <th>
+
+                    <button
+
+                      type="button"
+
+                      className="table-sort-button"
+
+                      onClick={() =>
+
+                        setSortState((current) => getNextSortState(current, "status"))
+
+                      }
+
+                    >
+
+                      Status
+
+                      {getSortArrow(sortState, "status") && (
+
+                        <span className="table-sort-arrow">
+
+                          {getSortArrow(sortState, "status")}
+
+                        </span>
+
+                      )}
+
+                    </button>
+
+                  </th>
+
+
+
+                  <th>
+
+                    <button
+
+                      type="button"
+
+                      className="table-sort-button"
+
+                      onClick={() =>
+
+                        setSortState((current) => getNextSortState(current, "phone"))
+
+                      }
+
+                    >
+
+                      Phone
+
+                      {getSortArrow(sortState, "phone") && (
+
+                        <span className="table-sort-arrow">
+
+                          {getSortArrow(sortState, "phone")}
+
+                        </span>
+
+                      )}
+
+                    </button>
+
+                  </th>
+
+
+
+                  <th>
+
+                    <button
+
+                      type="button"
+
+                      className="table-sort-button"
+
+                      onClick={() =>
+
+                        setSortState((current) => getNextSortState(current, "start"))
+
+                      }
+
+                    >
+
+                      Start
+
+                      {getSortArrow(sortState, "start") && (
+
+                        <span className="table-sort-arrow">
+
+                          {getSortArrow(sortState, "start")}
+
+                        </span>
+
+                      )}
+
+                    </button>
+
+                  </th>
+
+
+
+                  <th>
+
+                    <button
+
+                      type="button"
+
+                      className="table-sort-button"
+
+                      onClick={() =>
+
+                        setSortState((current) => getNextSortState(current, "end"))
+
+                      }
+
+                    >
+
+                      End
+
+                      {getSortArrow(sortState, "end") && (
+
+                        <span className="table-sort-arrow">
+
+                          {getSortArrow(sortState, "end")}
+
+                        </span>
+
+                      )}
+
+                    </button>
+
+                  </th>
+
+
 
                   <th>Actions</th>
 
@@ -1553,7 +1864,7 @@ export default function AppointmentsPage() {
 
 
 
-     
+
 
 
 
@@ -1637,7 +1948,7 @@ export default function AppointmentsPage() {
 
                     <div className="appointment-meta-item">
 
-                      <span className="lead-summary-label">Phone</span>
+                      <span className="appointment-summary-label">Phone</span>
 
                       <strong>{selectedLead?.phone || "No phone"}</strong>
 
@@ -1647,7 +1958,7 @@ export default function AppointmentsPage() {
 
                     <div className="appointment-meta-item">
 
-                      <span className="lead-summary-label">Email</span>
+                      <span className="appointment-summary-label">Email</span>
 
                       <strong>{selectedLead?.email || "No email"}</strong>
 
@@ -1657,7 +1968,7 @@ export default function AppointmentsPage() {
 
                     <div className="appointment-meta-item">
 
-                      <span className="lead-summary-label">Source</span>
+                      <span className="appointment-summary-label">Source</span>
 
                       <strong>{selectedLead?.source || "Not added"}</strong>
 
@@ -1667,7 +1978,7 @@ export default function AppointmentsPage() {
 
                     <div className="appointment-meta-item">
 
-                      <span className="lead-summary-label">Service</span>
+                      <span className="appointment-summary-label">Service</span>
 
                       <strong>{selectedLead?.serviceRequested || "Not added"}</strong>
 
@@ -1951,49 +2262,75 @@ export default function AppointmentsPage() {
 
       <style jsx global>{`
 
-        .appointment-toolbar-actions {
+        .appointments-summary-card {
 
-          flex-wrap: wrap;
+          padding-bottom: 18px;
 
         }
 
 
 
-        .appointment-list-toolbar-row {
+        .appointments-summary-grid {
+
+          display: grid;
+
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+
+          gap: 12px;
+
+        }
+
+
+
+        .appointment-summary-tile {
+
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+
+          background: var(--surface-soft, rgba(92, 118, 168, 0.05));
+
+          border-radius: 16px;
+
+          padding: 14px;
 
           display: flex;
 
-          justify-content: space-between;
+          flex-direction: column;
 
-          align-items: center;
-
-          gap: 14px;
-
-          margin-bottom: 14px;
+          gap: 8px;
 
         }
 
 
 
-        .appointment-list-sort {
+        .appointment-summary-tile strong {
 
-          display: flex;
+          font-size: 24px;
 
-          align-items: center;
-
-          gap: 10px;
+          line-height: 1;
 
         }
 
 
 
-        .appointment-list-sort label {
+        .appointment-summary-label {
 
-          font-size: 13px;
+          font-size: 12px;
+
+          text-transform: uppercase;
+
+          letter-spacing: 0.12em;
 
           color: var(--muted, #66758b);
 
-          font-weight: 600;
+          font-weight: 700;
+
+        }
+
+
+
+        .appointment-toolbar-actions {
+
+          flex-wrap: wrap;
 
         }
 
@@ -2022,6 +2359,14 @@ export default function AppointmentsPage() {
           flex-wrap: wrap;
 
         }
+
+
+
+
+
+
+
+
 
 
 
@@ -2093,9 +2438,7 @@ export default function AppointmentsPage() {
 
 
 
-        .lead-split-field label,
-
-        .lead-summary-label {
+        .lead-split-field label {
 
           font-size: 12px;
 
@@ -2317,6 +2660,14 @@ export default function AppointmentsPage() {
 
         @media (max-width: 1100px) {
 
+          .appointments-summary-grid {
+
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+
+          }
+
+
+
           .appointment-drawer {
 
             width: min(100vw - 20px, 100%);
@@ -2329,6 +2680,8 @@ export default function AppointmentsPage() {
 
         @media (max-width: 820px) {
 
+          .appointments-summary-grid,
+
           .appointment-datetime-grid,
 
           .appointment-two-col-grid,
@@ -2338,24 +2691,6 @@ export default function AppointmentsPage() {
           .form-grid {
 
             grid-template-columns: 1fr;
-
-          }
-
-
-
-          .appointment-list-toolbar-row {
-
-            flex-direction: column;
-
-            align-items: stretch;
-
-          }
-
-
-
-          .appointment-list-sort {
-
-            justify-content: space-between;
 
           }
 

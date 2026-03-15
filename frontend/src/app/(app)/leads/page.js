@@ -8,15 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import StatusPill from "../../../components/shared/statusPill";
 
-import {
-
-  formatDateTime,
-
-  sortByDateDesc,
-
-  toIsoFromLocalInput,
-
-} from "../../../lib/date/date";
+import { formatDateTime, toIsoFromLocalInput } from "../../../lib/date/date";
 
 import {
 
@@ -41,6 +33,8 @@ import { useAuth } from "../../../providers/sessionProvider";
 
 
 const PAGE_SIZE = 10;
+
+const EMPTY_SORT = { key: "", direction: "" };
 
 
 
@@ -69,26 +63,6 @@ const LEAD_SOURCE_OPTIONS = [
   "Public Form",
 
   "Other",
-
-];
-
-
-
-const LEAD_SORT_OPTIONS = [
-
-  { value: "created_desc", label: "Newest first" },
-
-  { value: "created_asc", label: "Oldest first" },
-
-  { value: "patient_asc", label: "Patient A-Z" },
-
-  { value: "patient_desc", label: "Patient Z-A" },
-
-  { value: "status_asc", label: "Status A-Z" },
-
-  { value: "followup_asc", label: "Next follow-up soonest" },
-
-  { value: "followup_desc", label: "Next follow-up latest" },
 
 ];
 
@@ -230,7 +204,49 @@ function compareOptionalDates(a, b, direction = "asc") {
 
 
 
-function sortLeadRows(rows, sortKey) {
+function getNextSortState(currentSort, key) {
+
+  if (currentSort.key !== key) {
+
+    return { key, direction: "asc" };
+
+  }
+
+
+
+  if (currentSort.direction === "asc") {
+
+    return { key, direction: "desc" };
+
+  }
+
+
+
+  return EMPTY_SORT;
+
+}
+
+
+
+function getSortArrow(sortState, key) {
+
+  if (sortState.key !== key) return "";
+
+  return sortState.direction === "asc" ? "↑" : "↓";
+
+}
+
+
+
+function sortLeadRows(rows, sortState, getAssigneeLabel) {
+
+  if (!sortState.key || !sortState.direction) {
+
+    return rows;
+
+  }
+
+
 
   const next = [...rows];
 
@@ -238,55 +254,83 @@ function sortLeadRows(rows, sortKey) {
 
   next.sort((a, b) => {
 
-    if (sortKey === "created_asc") {
+    if (sortState.key === "patient") {
 
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sortState.direction === "asc"
 
-    }
+        ? compareText(a.patientName, b.patientName)
 
-
-
-    if (sortKey === "patient_asc") {
-
-      return compareText(a.patientName, b.patientName);
+        : compareText(b.patientName, a.patientName);
 
     }
 
 
 
-    if (sortKey === "patient_desc") {
+    if (sortState.key === "status") {
 
-      return compareText(b.patientName, a.patientName);
+      return sortState.direction === "asc"
 
-    }
+        ? compareText(a.pipelineStatus, b.pipelineStatus)
 
-
-
-    if (sortKey === "status_asc") {
-
-      return compareText(a.pipelineStatus, b.pipelineStatus);
+        : compareText(b.pipelineStatus, a.pipelineStatus);
 
     }
 
 
 
-    if (sortKey === "followup_asc") {
+    if (sortState.key === "assignee") {
 
-      return compareOptionalDates(a.nextFollowupAt, b.nextFollowupAt, "asc");
+      return sortState.direction === "asc"
 
-    }
+        ? compareText(getAssigneeLabel(a), getAssigneeLabel(b))
 
-
-
-    if (sortKey === "followup_desc") {
-
-      return compareOptionalDates(a.nextFollowupAt, b.nextFollowupAt, "desc");
+        : compareText(getAssigneeLabel(b), getAssigneeLabel(a));
 
     }
 
 
 
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (sortState.key === "phone") {
+
+      return sortState.direction === "asc"
+
+        ? compareText(a.phone, b.phone)
+
+        : compareText(b.phone, a.phone);
+
+    }
+
+
+
+    if (sortState.key === "source") {
+
+      return sortState.direction === "asc"
+
+        ? compareText(a.source, b.source)
+
+        : compareText(b.source, a.source);
+
+    }
+
+
+
+    if (sortState.key === "nextFollowup") {
+
+      return compareOptionalDates(
+
+        a.nextFollowupAt,
+
+        b.nextFollowupAt,
+
+        sortState.direction
+
+      );
+
+    }
+
+
+
+    return 0;
 
   });
 
@@ -310,7 +354,7 @@ export default function LeadsPage() {
 
   const [showFilters, setShowFilters] = useState(false);
 
-  const [sortKey, setSortKey] = useState("created_desc");
+  const [sortState, setSortState] = useState(EMPTY_SORT);
 
   const [page, setPage] = useState(1);
 
@@ -347,6 +391,8 @@ export default function LeadsPage() {
     setAppliedFilters(next);
 
     setPage(1);
+
+    setSortState(EMPTY_SORT);
 
   }, [user]);
 
@@ -422,6 +468,22 @@ export default function LeadsPage() {
 
 
 
+  const getAssigneeLabel = useCallback(
+
+    (lead) => {
+
+      if (!lead?.assignedToUserId) return "Unassigned";
+
+      return usersById[lead.assignedToUserId]?.fullName || `User #${lead.assignedToUserId}`;
+
+    },
+
+    [usersById]
+
+  );
+
+
+
   const filteredLeads = useMemo(() => {
 
     let rows = [...leads];
@@ -452,9 +514,9 @@ export default function LeadsPage() {
 
   const sortedLeads = useMemo(() => {
 
-    return sortLeadRows(filteredLeads, sortKey);
+    return sortLeadRows(filteredLeads, sortState, getAssigneeLabel);
 
-  }, [filteredLeads, sortKey]);
+  }, [filteredLeads, sortState, getAssigneeLabel]);
 
 
 
@@ -545,22 +607,6 @@ export default function LeadsPage() {
     );
 
   }, [appliedFilters, user]);
-
-
-
-  const getAssigneeLabel = useCallback(
-
-    (lead) => {
-
-      if (!lead?.assignedToUserId) return "Unassigned";
-
-      return usersById[lead.assignedToUserId]?.fullName || `User #${lead.assignedToUserId}`;
-
-    },
-
-    [usersById]
-
-  );
 
 
 
@@ -733,6 +779,16 @@ export default function LeadsPage() {
     setShowFilters(false);
 
     setPage(1);
+
+  }
+
+
+
+  async function handleRefresh() {
+
+    setSortState(EMPTY_SORT);
+
+    await loadLeadsPage();
 
   }
 
@@ -1098,39 +1154,21 @@ export default function LeadsPage() {
 
             </button>
 
-          </div>
-
-        </div>
 
 
+            <button
 
-        <div className="lead-list-toolbar-row">
+              type="button"
 
-          <div className="lead-list-sort">
+              className="secondary-button"
 
-            <label htmlFor="lead-sort">Sort by</label>
-
-            <select
-
-              id="lead-sort"
-
-              value={sortKey}
-
-              onChange={(event) => setSortKey(event.target.value)}
+              onClick={handleRefresh}
 
             >
 
-              {LEAD_SORT_OPTIONS.map((option) => (
+              Refresh
 
-                <option key={option.value} value={option.value}>
-
-                  {option.label}
-
-                </option>
-
-              ))}
-
-            </select>
+            </button>
 
           </div>
 
@@ -1140,7 +1178,7 @@ export default function LeadsPage() {
 
         {showFilters && (
 
-          <form className="lead-inline-filters" onSubmit={handleApplyFilters}>
+          <form className="inline-filters-panel" onSubmit={handleApplyFilters}>
 
             <div className="form-grid">
 
@@ -1312,22 +1350,6 @@ export default function LeadsPage() {
 
               </button>
 
-
-
-              <button
-
-                type="button"
-
-                className="secondary-button"
-
-                onClick={loadLeadsPage}
-
-              >
-
-                Refresh
-
-              </button>
-
             </div>
 
           </form>
@@ -1356,17 +1378,213 @@ export default function LeadsPage() {
 
                   <tr>
 
-                    <th>Patient</th>
+                    <th>
 
-                    <th>Status</th>
+                      <button
 
-                    <th>Assignee</th>
+                        type="button"
 
-                    <th>Phone</th>
+                        className="table-sort-button"
 
-                    <th>Source</th>
+                        onClick={() =>
 
-                    <th>Next follow-up</th>
+                          setSortState((current) => getNextSortState(current, "patient"))
+
+                        }
+
+                      >
+
+                        Patient
+
+                        {getSortArrow(sortState, "patient") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "patient")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
+
+                    <th>
+
+                      <button
+
+                        type="button"
+
+                        className="table-sort-button"
+
+                        onClick={() =>
+
+                          setSortState((current) => getNextSortState(current, "status"))
+
+                        }
+
+                      >
+
+                        Status
+
+                        {getSortArrow(sortState, "status") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "status")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
+
+                    <th>
+
+                      <button
+
+                        type="button"
+
+                        className="table-sort-button"
+
+                        onClick={() =>
+
+                          setSortState((current) => getNextSortState(current, "assignee"))
+
+                        }
+
+                      >
+
+                        Assignee
+
+                        {getSortArrow(sortState, "assignee") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "assignee")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
+
+                    <th>
+
+                      <button
+
+                        type="button"
+
+                        className="table-sort-button"
+
+                        onClick={() =>
+
+                          setSortState((current) => getNextSortState(current, "phone"))
+
+                        }
+
+                      >
+
+                        Phone
+
+                        {getSortArrow(sortState, "phone") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "phone")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
+
+                    <th>
+
+                      <button
+
+                        type="button"
+
+                        className="table-sort-button"
+
+                        onClick={() =>
+
+                          setSortState((current) => getNextSortState(current, "source"))
+
+                        }
+
+                      >
+
+                        Source
+
+                        {getSortArrow(sortState, "source") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "source")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
+
+                    <th>
+
+                      <button
+
+                        type="button"
+
+                        className="table-sort-button"
+
+                        onClick={() =>
+
+                          setSortState((current) =>
+
+                            getNextSortState(current, "nextFollowup")
+
+                          )
+
+                        }
+
+                      >
+
+                        Next follow-up
+
+                        {getSortArrow(sortState, "nextFollowup") && (
+
+                          <span className="table-sort-arrow">
+
+                            {getSortArrow(sortState, "nextFollowup")}
+
+                          </span>
+
+                        )}
+
+                      </button>
+
+                    </th>
+
+
 
                     <th>Actions</th>
 
@@ -2076,47 +2294,7 @@ export default function LeadsPage() {
 
 
 
-        .lead-list-toolbar-row {
-
-          display: flex;
-
-          justify-content: space-between;
-
-          align-items: center;
-
-          gap: 14px;
-
-          margin-bottom: 14px;
-
-        }
-
-
-
-        .lead-list-sort {
-
-          display: flex;
-
-          align-items: center;
-
-          gap: 10px;
-
-        }
-
-
-
-        .lead-list-sort label {
-
-          font-size: 13px;
-
-          color: var(--muted, #66758b);
-
-          font-weight: 600;
-
-        }
-
-
-
-        .lead-inline-filters {
+        .inline-filters-panel {
 
           margin-bottom: 16px;
 
@@ -2139,6 +2317,13 @@ export default function LeadsPage() {
           flex-wrap: wrap;
 
         }
+
+
+
+ 
+
+
+
 
 
 
@@ -2337,24 +2522,6 @@ export default function LeadsPage() {
           .form-grid {
 
             grid-template-columns: 1fr;
-
-          }
-
-
-
-          .lead-list-toolbar-row {
-
-            flex-direction: column;
-
-            align-items: stretch;
-
-          }
-
-
-
-          .lead-list-sort {
-
-            justify-content: space-between;
 
           }
 

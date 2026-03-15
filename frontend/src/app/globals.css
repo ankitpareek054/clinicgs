@@ -877,13 +877,39 @@ textarea {
   vertical-align: top;
 }
 
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+
+.table-sort-arrow {
+  font-size: 1.50em;
+  line-height: 0.75;
+  color: var(--muted, #66758b);
+}
+
 .data-table th {
   color: var(--muted);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
+} 
 
 .data-table td {
   font-size: 14px;
