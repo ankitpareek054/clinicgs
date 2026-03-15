@@ -16,6 +16,8 @@ import {
 
 } from "../../../lib/date/date";
 
+import useAutoDismissBanner from "../../../hooks/useAutoDismissBanner";
+
 import {
 
   createFollowup,
@@ -41,6 +43,32 @@ import { useAuth } from "../../../providers/sessionProvider";
 const TIME_OPTIONS = buildTimeOptions(15);
 
 const EMPTY_SORT = { key: "", direction: "" };
+
+
+
+const FOLLOWUP_OUTCOME_OPTIONS = [
+
+  { value: "", label: "Select outcome" },
+
+  { value: "No answer", label: "No answer" },
+
+  { value: "Callback requested", label: "Callback requested" },
+
+  { value: "Interested", label: "Interested" },
+
+  { value: "Appointment booked", label: "Appointment booked" },
+
+  { value: "Not interested", label: "Not interested" },
+
+  { value: "Wrong number", label: "Wrong number" },
+
+  { value: "Voicemail left", label: "Voicemail left" },
+
+  { value: "Follow-up rescheduled", label: "Follow-up rescheduled" },
+
+  { value: "Other", label: "Other" },
+
+];
 
 
 
@@ -238,7 +266,23 @@ function getEndOfToday() {
 
   const now = new Date();
 
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return new Date(
+
+    now.getFullYear(),
+
+    now.getMonth(),
+
+    now.getDate(),
+
+    23,
+
+    59,
+
+    59,
+
+    999
+
+  );
 
 }
 
@@ -468,6 +512,20 @@ export default function FollowupsPage() {
 
 
 
+  useAutoDismissBanner({
+
+    error,
+
+    notice,
+
+    setError,
+
+    setNotice,
+
+  });
+
+
+
   useEffect(() => {
 
     const next = createInitialFilters(user);
@@ -574,7 +632,13 @@ export default function FollowupsPage() {
 
       if (!lead?.assignedToUserId) return "Unassigned";
 
-      return usersById[lead.assignedToUserId]?.fullName || `User #${lead.assignedToUserId}`;
+      return (
+
+        usersById[lead.assignedToUserId]?.fullName ||
+
+        `User #${lead.assignedToUserId}`
+
+      );
 
     },
 
@@ -936,8 +1000,6 @@ export default function FollowupsPage() {
 
         dueAt: toIsoFromLocalInput(dueLocal),
 
-        status: editForm.status,
-
         outcome: editForm.outcome || null,
 
         notes: editForm.notes || null,
@@ -946,11 +1008,23 @@ export default function FollowupsPage() {
 
 
 
-      setNotice("Follow-up updated.");
+      if (editForm.status !== selectedFollowup.status) {
+
+        await updateFollowupStatus(selectedFollowup.id, {
+
+          status: editForm.status,
+
+        });
+
+      }
+
+
 
       await loadPage();
 
       closeDrawer();
+
+      setNotice("Follow-up updated.");
 
     } catch (err) {
 
@@ -1008,7 +1082,7 @@ export default function FollowupsPage() {
 
   const selectedLead = selectedFollowup ? leadsById[selectedFollowup.leadId] : null;
 
-  const selectedAssigneeLabel = selectedLead ? getAssigneeLabel(selectedLead) : "—";
+  const selectedAssigneeLabel = selectedLead   ? getAssigneeLabel(selectedLead)  : "—";
 
 
 
@@ -2049,27 +2123,21 @@ export default function FollowupsPage() {
 
 
 
-                    <div className="field">
-
-                      <label>Outcome</label>
-
-                      <input
-
-                        type="text"
-
-                        value={editForm.outcome}
-
-                        onChange={(event) =>
-
-                          updateEditForm("outcome", event.target.value)
-
-                        }
-
-                        placeholder="No answer, callback requested, not interested"
-
-                      />
-
-                    </div>
+<div className="field">
+  <label>Outcome</label>
+  <select
+    value={editForm.outcome}
+    onChange={(event) =>
+      updateEditForm("outcome", event.target.value)
+    }
+  >
+    {FOLLOWUP_OUTCOME_OPTIONS.map((option) => (
+      <option key={option.value || "empty"} value={option.value}>
+        {option.label}
+      </option>
+    ))}
+  </select>
+</div>
 
 
 

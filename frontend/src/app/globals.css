@@ -825,35 +825,77 @@ textarea {
   letter-spacing: 0.1em;
 }
 
-.status-pill.new,
-.status-pill.booked,
-.status-pill.pending {
-  background: var(--primary-soft);
-  border-color: var(--border);
+.status-pill.new {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.28);
+  color: #1d4ed8;
 }
 
-.status-pill.contacted,
-.status-pill.rescheduled,
+.status-pill.contacted {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.28);
+  color: #b45309;
+}
+
+.status-pill.booked {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #047857;
+}
+
+.status-pill.rescheduled {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+  color: #6d28d9;
+}
+
+.status-pill.completed {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: #4338ca;
+}
+
 .status-pill.review-pending {
-  background: var(--warning-bg);
-  border-color: var(--warning-border);
-  color: var(--warning-text);
+  background: rgba(20, 184, 166, 0.14);
+  border-color: rgba(20, 184, 166, 0.28);
+  color: #0f766e;
 }
 
-.status-pill.completed,
+.status-pill.no-show {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #b91c1c;
+}
+
+.status-pill.not-interested {
+  background: rgba(107, 114, 128, 0.14);
+  border-color: rgba(107, 114, 128, 0.28);
+  color: #4b5563;
+}
+
+.status-pill.cancelled {
+  background: rgba(71, 85, 105, 0.14);
+  border-color: rgba(71, 85, 105, 0.28);
+  color: #334155;
+}
+
+/* keep shared non-lead statuses used elsewhere */
+.status-pill.pending {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.28);
+  color: #1d4ed8;
+}
+
 .status-pill.done {
-  background: var(--success-bg);
-  border-color: var(--success-border);
-  color: var(--success-text);
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #047857;
 }
 
-.status-pill.no-show,
-.status-pill.cancelled,
-.status-pill.not-interested,
 .status-pill.skipped {
-  background: var(--danger-bg);
-  border-color: var(--danger-border);
-  color: var(--danger-text);
+  background: rgba(107, 114, 128, 0.14);
+  border-color: rgba(107, 114, 128, 0.28);
+  color: #4b5563;
 }
 
 .data-table-wrap {

@@ -12,6 +12,8 @@ import StatusPill from "../../../components/shared/statusPill";
 
 import { formatDateTime } from "../../../lib/date/date";
 
+import useAutoDismissBanner from "../../../hooks/useAutoDismissBanner";
+
 import {
 
   assignLeadToSelf,
@@ -417,6 +419,20 @@ export default function LeadsPage() {
   const [error, setError] = useState("");
 
   const [notice, setNotice] = useState("");
+
+
+
+  useAutoDismissBanner({
+
+    error,
+
+    notice,
+
+    setError,
+
+    setNotice,
+
+  });
 
 
 
@@ -1039,6 +1055,7 @@ export default function LeadsPage() {
   const showingFrom = sortedLeads.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
 
   const showingTo = Math.min(page * PAGE_SIZE, sortedLeads.length);
+
 
 
 

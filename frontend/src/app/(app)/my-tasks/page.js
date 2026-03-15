@@ -24,6 +24,8 @@ import {
 
 } from "../../../lib/date/date";
 
+import useAutoDismissBanner from "../../../hooks/useAutoDismissBanner";
+
 import {
 
   createAppointment,
@@ -335,6 +337,20 @@ export default function MyTasksPage() {
   const [error, setError] = useState("");
 
   const [notice, setNotice] = useState("");
+
+
+
+  useAutoDismissBanner({
+
+    error,
+
+    notice,
+
+    setError,
+
+    setNotice,
+
+  });
 
 
 
@@ -1031,7 +1047,6 @@ export default function MyTasksPage() {
     }
 
   }
-
 
 
   return (

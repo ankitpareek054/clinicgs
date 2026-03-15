@@ -18,6 +18,8 @@ import {
 
 } from "../../../lib/date/date";
 
+import useAutoDismissBanner from "../../../hooks/useAutoDismissBanner";
+
 import {
 
   appointmentStatusOptions,
@@ -453,6 +455,20 @@ export default function AppointmentsPage() {
   const [error, setError] = useState("");
 
   const [notice, setNotice] = useState("");
+
+
+
+  useAutoDismissBanner({
+
+    error,
+
+    notice,
+
+    setError,
+
+    setNotice,
+
+  });
 
 
 
