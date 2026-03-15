@@ -571,6 +571,7 @@ textarea {
 .sidebar .page-card,
 .sidebar .soft-card,
 .sidebar-footer {
+  
   background: var(--sidebar-soft);
   border: 1px solid rgba(255, 255, 255, 0.05);
   color: var(--sidebar-text);
