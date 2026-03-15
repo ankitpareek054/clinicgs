@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getDefaultAppPath } from "../../../lib/auth/auth";
 import { useAuth } from "../../../providers/sessionProvider";
+import ThemeToggle from "../../../components/shared/themeToggle";
 
 const demoAccounts = [
   { label: "Super Admin", email: "super@gamil.com", password: "Ankit@1234" },
@@ -44,10 +45,21 @@ export default function LoginPage() {
     }
   }
 
+  function fillDemoAccount(account) {
+    setForm({
+      email: account.email,
+      password: account.password,
+    });
+  }
+
   if (isBootstrapping) {
     return (
       <div className="auth-screen">
-        <div className="auth-card">
+        <div className="floating-theme-control">
+          <ThemeToggle />
+        </div>
+
+        <div className="auth-card premium-panel">
           <h1>Clinic GS</h1>
           <p className="muted">Checking for an existing login…</p>
         </div>
@@ -57,12 +69,17 @@ export default function LoginPage() {
 
   return (
     <div className="auth-screen">
-      <div className="auth-card">
+      <div className="floating-theme-control">
+        <ThemeToggle />
+      </div>
+
+      <div className="auth-card premium-panel">
         <div className="stack">
-          <div>
-            <h1>Login</h1>
+          <div className="auth-hero">
+            <span className="eyebrow">Clinic operations</span>
+            <h1>Welcome back</h1>
             <p className="muted">
-              This is the first real frontend flow: login, current user, protected app area, and logout.
+              Login to manage leads, follow-ups, and appointments from one place.
             </p>
           </div>
 
@@ -104,15 +121,22 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <section className="page-card">
-            <h2>Seeded test accounts</h2>
-            <ul className="credentials-list">
+          <section className="page-card soft-card">
+            <h2>Quick fill seeded accounts</h2>
+
+            <div className="demo-account-grid">
               {demoAccounts.map((account) => (
-                <li key={account.email}>
-                  <strong>{account.label}:</strong> {account.email} / {account.password}
-                </li>
+                <button
+                  key={account.email}
+                  type="button"
+                  className="secondary-button demo-account-button"
+                  onClick={() => fillDemoAccount(account)}
+                >
+                  <strong>{account.label}</strong>
+                  <span>{account.email}</span>
+                </button>
               ))}
-            </ul>
+            </div>
           </section>
         </div>
       </div>

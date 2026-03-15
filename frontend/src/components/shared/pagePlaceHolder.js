@@ -8,6 +8,7 @@ export default function PagePlaceholder({ title, description, points = [] }) {
 
       <section className="page-card">
         <h2>What this page will do next</h2>
+
         <ul className="placeholder-list">
           {points.map((point) => (
             <li key={point}>{point}</li>

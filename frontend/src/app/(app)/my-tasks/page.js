@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusPill from "../../../components/shared/statusPill";
 import { formatDateTime, isDateToday, sortByDateAsc } from "../../../lib/date/date";
@@ -153,7 +154,7 @@ export default function MyTasksPage() {
       <div className="page-header">
         <h1>My Tasks</h1>
         <p className="muted">
-          This is the receptionist action screen. It pulls follow-ups and appointments from the backend and turns them into today’s work queue.
+          This is the receptionist daily queue. It shows which follow-ups and appointments need action right now.
         </p>
       </div>
 
@@ -180,9 +181,23 @@ export default function MyTasksPage() {
         </section>
 
         <section className="metric-card">
-          <span className="muted small-label">Unassigned pickup leads</span>
+          <span className="muted small-label">Pickup leads</span>
           <strong>{pickupLeads.length}</strong>
         </section>
+      </div>
+
+      <div className="record-actions">
+        <Link href="/leads" className="secondary-button">
+          Open Leads Workspace
+        </Link>
+
+        <Link href="/appointments" className="secondary-button">
+          Open Appointments
+        </Link>
+
+        <button type="button" className="secondary-button" onClick={loadPage}>
+          Refresh
+        </button>
       </div>
 
       <section className="page-card">
@@ -191,10 +206,6 @@ export default function MyTasksPage() {
             <h2>Overdue follow-ups</h2>
             <p className="muted">These need attention first.</p>
           </div>
-
-          <button type="button" className="secondary-button" onClick={loadPage}>
-            Refresh
-          </button>
         </div>
 
         {isLoading ? (
@@ -346,12 +357,12 @@ export default function MyTasksPage() {
           <div className="section-heading">
             <div>
               <h2>Pickup leads</h2>
-              <p className="muted">Optional unassigned leads you can grab for follow-up.</p>
+              <p className="muted">Optional unassigned leads you can grab and work on.</p>
             </div>
           </div>
 
           {isLoading ? (
-            <p className="muted">Loading lead pickup list…</p>
+            <p className="muted">Loading pickup leads…</p>
           ) : pickupLeads.length === 0 ? (
             <div className="empty-state">No unassigned leads are waiting right now.</div>
           ) : (

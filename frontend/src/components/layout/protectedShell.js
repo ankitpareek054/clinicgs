@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getRoleLabel, isOwnerLike } from "../../lib/auth/auth";
 import { useAuth } from "../../providers/sessionProvider";
+import ThemeToggle from "../shared/themeToggle";
 
 const receptionistNav = [
   { href: "/my-tasks", label: "My Tasks" },
@@ -46,7 +47,7 @@ export default function ProtectedShell({ children }) {
   if (isBootstrapping) {
     return (
       <div className="loading-screen">
-        <div className="page-card">
+        <div className="page-card premium-panel">
           <h2>Loading your session…</h2>
           <p className="muted">Checking who is logged in and which clinic they belong to.</p>
         </div>
@@ -63,9 +64,10 @@ export default function ProtectedShell({ children }) {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="brand-pill">CGS</span>
+
           <div>
             <div className="sidebar-title">Clinic GS</div>
-            <div className="sidebar-subtitle">Clinic-side app</div>
+            <div className="sidebar-subtitle">Clinic-side workspace</div>
           </div>
         </div>
 
@@ -96,7 +98,9 @@ export default function ProtectedShell({ children }) {
           </div>
 
           <div className="topbar-actions">
-            <div className="user-chip">
+            <ThemeToggle compact />
+
+            <div className="user-chip premium-panel">
               <strong>{user.fullName || user.email}</strong>
               <span className="muted">{getRoleLabel(user.role)}</span>
             </div>

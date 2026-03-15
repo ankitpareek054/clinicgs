@@ -27,11 +27,11 @@ function createInitialAppointmentForm() {
   };
 }
 
-function createDraftFromAppointment(appointment) {
+function createEditForm(appointment) {
   return {
     startTime: formatDateTimeInputValue(appointment.startTime),
     endTime: formatDateTimeInputValue(appointment.endTime),
-    status: appointment.status,
+    status: appointment.status || "booked",
     notes: appointment.notes || "",
   };
 }
@@ -49,13 +49,16 @@ export default function AppointmentsPage() {
   const [createForm, setCreateForm] = useState(createInitialAppointmentForm());
   const [appointments, setAppointments] = useState([]);
   const [leads, setLeads] = useState([]);
-  const [drafts, setDrafts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const loadAppointmentsPage = useCallback(async () => {
+  const loadPage = useCallback(async () => {
     setIsLoading(true);
     setError("");
 
@@ -64,7 +67,9 @@ export default function AppointmentsPage() {
         listAppointments({
           status: appliedFilters.status || undefined,
         }),
-        listLeads({ visibilityStatus: "active" }),
+        listLeads({
+          visibilityStatus: "active",
+        }),
       ]);
 
       setAppointments(appointmentRows);
@@ -77,8 +82,8 @@ export default function AppointmentsPage() {
   }, [appliedFilters.status]);
 
   useEffect(() => {
-    loadAppointmentsPage();
-  }, [loadAppointmentsPage]);
+    loadPage();
+  }, [loadPage]);
 
   const leadsById = useMemo(() => {
     return leads.reduce((acc, lead) => {
@@ -90,7 +95,7 @@ export default function AppointmentsPage() {
   const visibleAppointments = useMemo(() => {
     let rows = sortByDateAsc(appointments, (item) => item.startTime);
 
-    if (appliedFilters.search) {
+    if (appliedFilters.search.trim()) {
       const searchText = appliedFilters.search.trim().toLowerCase();
 
       rows = rows.filter((appointment) => {
@@ -112,18 +117,19 @@ export default function AppointmentsPage() {
     return rows;
   }, [appointments, appliedFilters.search, leadsById]);
 
-  function updateDraft(appointmentId, patch) {
-    setDrafts((current) => ({
-      ...current,
-      [appointmentId]: {
-        ...(current[appointmentId] || {}),
-        ...patch,
-      },
-    }));
+  function openDrawer(appointment) {
+    setSelectedAppointment(appointment);
+    setEditForm(createEditForm(appointment));
+  }
+
+  function closeDrawer() {
+    setSelectedAppointment(null);
+    setEditForm(null);
   }
 
   async function handleCreateAppointment(event) {
     event.preventDefault();
+
     setBusyKey("create-appointment");
     setError("");
     setNotice("");
@@ -139,7 +145,7 @@ export default function AppointmentsPage() {
 
       setNotice("Appointment created successfully.");
       setCreateForm(createInitialAppointmentForm());
-      await loadAppointmentsPage();
+      await loadPage();
     } catch (err) {
       setError(err.message || "Could not create appointment.");
     } finally {
@@ -147,23 +153,30 @@ export default function AppointmentsPage() {
     }
   }
 
-  async function handleSaveAppointment(appointment) {
-    const draft = drafts[appointment.id] || createDraftFromAppointment(appointment);
+  async function handleSaveAppointment() {
+    if (!selectedAppointment || !editForm) return;
 
-    setBusyKey(`appointment-${appointment.id}`);
+    setBusyKey(`appointment-${selectedAppointment.id}`);
     setError("");
     setNotice("");
 
     try {
-      await updateAppointment(appointment.id, {
-        startTime: toIsoFromLocalInput(draft.startTime),
-        endTime: toIsoFromLocalInput(draft.endTime),
-        status: draft.status,
-        notes: draft.notes || null,
+      await updateAppointment(selectedAppointment.id, {
+        startTime: toIsoFromLocalInput(editForm.startTime),
+        endTime: toIsoFromLocalInput(editForm.endTime),
+        status: editForm.status,
+        notes: editForm.notes || null,
       });
 
       setNotice("Appointment updated.");
-      await loadAppointmentsPage();
+      await loadPage();
+
+      const refreshed = appointments.find((item) => item.id === selectedAppointment.id);
+      if (refreshed) {
+        setSelectedAppointment(refreshed);
+      }
+
+      closeDrawer();
     } catch (err) {
       setError(err.message || "Could not update appointment.");
     } finally {
@@ -171,12 +184,14 @@ export default function AppointmentsPage() {
     }
   }
 
+  const selectedLead = selectedAppointment ? leadsById[selectedAppointment.leadId] : null;
+
   return (
     <div className="stack">
       <div className="page-header">
         <h1>Appointments</h1>
         <p className="muted">
-          Manage booked, rescheduled, completed, no-show, and cancelled appointments from one page.
+          This is the receptionist scheduling screen. Create, review, and update appointments here.
         </p>
       </div>
 
@@ -190,7 +205,7 @@ export default function AppointmentsPage() {
         <div className="section-heading">
           <div>
             <h2>Filter appointments</h2>
-            <p className="muted">Use the backend status filter and local patient search.</p>
+            <p className="muted">Filter by backend status and search locally by patient details.</p>
           </div>
         </div>
 
@@ -224,7 +239,7 @@ export default function AppointmentsPage() {
             </div>
 
             <div className="field">
-              <label htmlFor="appointment-search">Search by patient</label>
+              <label htmlFor="appointment-search">Search patient</label>
               <input
                 id="appointment-search"
                 type="text"
@@ -245,11 +260,7 @@ export default function AppointmentsPage() {
               Apply filters
             </button>
 
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={loadAppointmentsPage}
-            >
+            <button type="button" className="secondary-button" onClick={loadPage}>
               Refresh
             </button>
           </div>
@@ -260,7 +271,7 @@ export default function AppointmentsPage() {
         <div className="section-heading">
           <div>
             <h2>Create appointment</h2>
-            <p className="muted">Pick a lead, time slot, and status.</p>
+            <p className="muted">Pick a lead, choose a slot, and save the visit.</p>
           </div>
         </div>
 
@@ -355,7 +366,7 @@ export default function AppointmentsPage() {
                   notes: event.target.value,
                 }))
               }
-              placeholder="Optional note for the visit"
+              placeholder="Optional appointment note"
             />
           </div>
 
@@ -376,7 +387,7 @@ export default function AppointmentsPage() {
           <div>
             <h2>Appointment list</h2>
             <p className="muted">
-              {isLoading ? "Loading…" : `${visibleAppointments.length} appointments in this view`}
+              {isLoading ? "Loading appointments…" : `${visibleAppointments.length} appointments in this view`}
             </p>
           </div>
         </div>
@@ -386,114 +397,178 @@ export default function AppointmentsPage() {
         ) : visibleAppointments.length === 0 ? (
           <div className="empty-state">No appointments matched your current filters.</div>
         ) : (
-          <div className="records-list">
-            {visibleAppointments.map((appointment) => {
-              const lead = leadsById[appointment.leadId];
-              const draft = drafts[appointment.id] || createDraftFromAppointment(appointment);
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Status</th>
+                  <th>Phone</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
 
-              return (
-                <article key={appointment.id} className="record-card">
-                  <div className="record-main">
-                    <div className="record-title-row">
-                      <h3>{lead?.patientName || `Lead #${appointment.leadId}`}</h3>
-                      <StatusPill status={appointment.status} />
-                    </div>
+              <tbody>
+                {visibleAppointments.map((appointment) => {
+                  const lead = leadsById[appointment.leadId];
 
-                    <div className="record-meta">
-                      <span>{lead?.phone || "No phone"}</span>
-                      <span>{lead?.email || "No email"}</span>
-                      <span>Starts: {formatDateTime(appointment.startTime)}</span>
-                      <span>Ends: {formatDateTime(appointment.endTime)}</span>
-                    </div>
-
-                    <p className="muted">
-                      {appointment.notes || "No appointment note added yet."}
-                    </p>
-                  </div>
-
-                  <details className="record-details">
-                    <summary>Edit appointment</summary>
-
-                    <div className="top-gap stack-sm">
-                      <div className="form-grid">
-                        <div className="field">
-                          <label>Start time</label>
-                          <input
-                            type="datetime-local"
-                            value={draft.startTime}
-                            onChange={(event) => {
-                              const startTime = event.target.value;
-
-                              updateDraft(appointment.id, {
-                                startTime,
-                                endTime: draft.endTime || addMinutesToLocalInput(startTime, 30),
-                              });
-                            }}
-                          />
+                  return (
+                    <tr key={appointment.id}>
+                      <td>
+                        <div className="table-primary-cell">
+                          <strong>{lead?.patientName || `Lead #${appointment.leadId}`}</strong>
+                          <span className="muted">{lead?.email || "No email"}</span>
                         </div>
+                      </td>
 
-                        <div className="field">
-                          <label>End time</label>
-                          <input
-                            type="datetime-local"
-                            value={draft.endTime}
-                            onChange={(event) =>
-                              updateDraft(appointment.id, {
-                                endTime: event.target.value,
-                              })
-                            }
-                          />
-                        </div>
+                      <td>
+                        <StatusPill status={appointment.status} />
+                      </td>
 
-                        <div className="field">
-                          <label>Status</label>
-                          <select
-                            value={draft.status}
-                            onChange={(event) =>
-                              updateDraft(appointment.id, {
-                                status: event.target.value,
-                              })
-                            }
-                          >
-                            {appointmentStatusOptions.map((status) => (
-                              <option key={status} value={status}>
-                                {status.replaceAll("_", " ")}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                      <td>{lead?.phone || "No phone"}</td>
+                      <td>{formatDateTime(appointment.startTime)}</td>
+                      <td>{formatDateTime(appointment.endTime)}</td>
 
-                        <div className="field field-span-2">
-                          <label>Notes</label>
-                          <textarea
-                            value={draft.notes}
-                            onChange={(event) =>
-                              updateDraft(appointment.id, {
-                                notes: event.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="record-actions">
+                      <td>
                         <button
                           type="button"
-                          className="primary-button"
-                          disabled={busyKey === `appointment-${appointment.id}`}
-                          onClick={() => handleSaveAppointment(appointment)}
+                          className="primary-button compact-button"
+                          onClick={() => openDrawer(appointment)}
                         >
-                          Save changes
+                          Open
                         </button>
-                      </div>
-                    </div>
-                  </details>
-                </article>
-              );
-            })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
+
+      {selectedAppointment && editForm && (
+        <div className="drawer-backdrop" onClick={closeDrawer}>
+          <aside className="drawer-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-header">
+              <div>
+                <h2>{selectedLead?.patientName || `Lead #${selectedAppointment.leadId}`}</h2>
+                <p className="muted">
+                  {selectedLead?.phone || "No phone"} • {selectedLead?.email || "No email"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={closeDrawer}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="stack">
+              <section className="page-card drawer-card">
+                <div className="section-heading">
+                  <div>
+                    <h3>Appointment details</h3>
+                    <p className="muted">Update timing, status, and notes for this visit.</p>
+                  </div>
+
+                  <StatusPill status={selectedAppointment.status} />
+                </div>
+
+                <div className="form-grid">
+                  <div className="field">
+                    <label>Start time</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.startTime}
+                      onChange={(event) => {
+                        const startTime = event.target.value;
+
+                        setEditForm((current) => ({
+                          ...current,
+                          startTime,
+                          endTime: current.endTime || addMinutesToLocalInput(startTime, 30),
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label>End time</label>
+                    <input
+                      type="datetime-local"
+                      value={editForm.endTime}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          endTime: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label>Status</label>
+                    <select
+                      value={editForm.status}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          status: event.target.value,
+                        }))
+                      }
+                    >
+                      {appointmentStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status.replaceAll("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="field field-span-2">
+                    <label>Notes</label>
+                    <textarea
+                      value={editForm.notes}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="record-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={busyKey === `appointment-${selectedAppointment.id}`}
+                    onClick={handleSaveAppointment}
+                  >
+                    Save appointment
+                  </button>
+                </div>
+              </section>
+
+              <section className="page-card drawer-card">
+                <h3>Related lead</h3>
+                <p className="muted">
+                  Source: {selectedLead?.source || "Not added"} • Service:{" "}
+                  {selectedLead?.serviceRequested || "Not added"}
+                </p>
+                <p>{selectedLead?.notes || "No lead notes available."}</p>
+              </section>
+            </div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

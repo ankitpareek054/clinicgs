@@ -81,7 +81,7 @@ export function SessionProvider({ children }) {
     try {
       await api.post("/auth/logout", {});
     } catch (err) {
-      // even if backend logout fails, clear local user state
+      // clear frontend session even if backend logout response fails
     } finally {
       setUser(null);
       setError("");
