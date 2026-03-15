@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusPill from "../../../components/shared/statusPill";
 import {
@@ -272,6 +273,12 @@ export default function AppointmentsPage() {
           <div>
             <h2>Create appointment</h2>
             <p className="muted">Pick a lead, choose a slot, and save the visit.</p>
+          </div>
+
+          <div className="record-actions">
+            <Link href="/leads/new" className="primary-button">
+              Create lead
+            </Link>
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusPill from "../../../components/shared/statusPill";
 import {
@@ -66,6 +67,31 @@ function buildLeadForm(lead) {
   };
 }
 
+function getDefaultNextFollowupInput() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(date.getHours() + 1);
+  date.setMinutes(0);
+  date.setSeconds(0);
+  date.setMilliseconds(0);
+
+  return formatDateTimeInputValue(date.toISOString());
+}
+
+function getDefaultAppointmentStartInput(lead) {
+  if (lead?.preferredAppointmentAt) {
+    return formatDateTimeInputValue(lead.preferredAppointmentAt);
+  }
+
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
+  date.setMinutes(0);
+  date.setSeconds(0);
+  date.setMilliseconds(0);
+
+  return formatDateTimeInputValue(date.toISOString());
+}
+
 function buildDrawerState() {
   return {
     isLoading: false,
@@ -82,6 +108,10 @@ function buildDrawerState() {
       startTime: "",
       endTime: "",
       status: "booked",
+      notes: "",
+    },
+    outcomeForm: {
+      nextFollowupAt: getDefaultNextFollowupInput(),
       notes: "",
     },
   };
@@ -161,6 +191,16 @@ export default function LeadsPage() {
     return sortByDateDesc(rows, (item) => item.createdAt);
   }, [appliedFilters.assignmentScope, leads, user]);
 
+  const unassignedLeadCount = useMemo(() => {
+    return leads.filter((lead) => !lead.assignedToUserId).length;
+  }, [leads]);
+
+  const myLeadCount = useMemo(() => {
+    return leads.filter(
+      (lead) => Number(lead.assignedToUserId) === Number(user?.id)
+    ).length;
+  }, [leads, user]);
+
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
 
   useEffect(() => {
@@ -212,6 +252,10 @@ export default function LeadsPage() {
           status: "booked",
           notes: "",
         },
+        outcomeForm: {
+          nextFollowupAt: getDefaultNextFollowupInput(),
+          notes: "",
+        },
       });
     } catch (err) {
       setDrawer(buildDrawerState());
@@ -260,6 +304,28 @@ export default function LeadsPage() {
     }));
   }
 
+  function updateOutcomeForm(field, value) {
+    setDrawer((current) => ({
+      ...current,
+      outcomeForm: {
+        ...current.outcomeForm,
+        [field]: value,
+      },
+    }));
+  }
+
+  function applyAssignmentScope(scope) {
+    setFilterForm((current) => ({
+      ...current,
+      assignmentScope: scope,
+    }));
+    setAppliedFilters((current) => ({
+      ...current,
+      assignmentScope: scope,
+    }));
+    setPage(1);
+  }
+
   async function handleAssignToggle(lead) {
     const isMine = Number(lead.assignedToUserId) === Number(user?.id);
 
@@ -273,7 +339,7 @@ export default function LeadsPage() {
         setNotice("Lead unassigned from you.");
       } else {
         await assignLeadToSelf(lead.id);
-        setNotice("Lead assigned to you.");
+        setNotice("Lead picked up successfully.");
       }
 
       await loadLeadsPage();
@@ -421,9 +487,165 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleQuickOutcome(kind) {
+    if (!selectedLeadId) return;
+
+    const notes = drawer.outcomeForm.notes.trim() || null;
+    const nextFollowupAt = drawer.outcomeForm.nextFollowupAt;
+    const currentPendingFollowup =
+      drawer.followups.find((item) => item.status === "pending") || null;
+
+    if (
+      (kind === "no_answer" || kind === "callback_requested") &&
+      !nextFollowupAt
+    ) {
+      setError("Please choose the next follow-up time first.");
+      return;
+    }
+
+    setBusyKey(`drawer-outcome-${kind}`);
+    setError("");
+    setNotice("");
+
+    try {
+      if (kind === "no_answer") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "No answer",
+            notes,
+          });
+        }
+
+        await createFollowup({
+          leadId: selectedLeadId,
+          dueAt: toIsoFromLocalInput(nextFollowupAt),
+          notes: notes || "Retry patient contact.",
+          outcome: "Retry contact",
+        });
+
+        setNotice("No-answer outcome saved and next follow-up scheduled.");
+      }
+
+      if (kind === "callback_requested") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "Callback requested",
+            notes,
+          });
+        }
+
+        await updateLead(selectedLeadId, {
+          pipelineStatus: "contacted",
+        });
+
+        await createFollowup({
+          leadId: selectedLeadId,
+          dueAt: toIsoFromLocalInput(nextFollowupAt),
+          notes: notes || "Patient requested a callback.",
+          outcome: "Callback requested",
+        });
+
+        setNotice("Callback outcome saved and next follow-up scheduled.");
+      }
+
+      if (kind === "booked") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "Appointment booked",
+            notes,
+          });
+        }
+
+        await updateLead(selectedLeadId, {
+          pipelineStatus: "booked",
+        });
+
+        const seededStart =
+          drawer.appointmentForm.startTime ||
+          getDefaultAppointmentStartInput(drawer.lead);
+
+        setDrawer((current) => ({
+          ...current,
+          appointmentForm: {
+            ...current.appointmentForm,
+            startTime: current.appointmentForm.startTime || seededStart,
+            endTime:
+              current.appointmentForm.endTime ||
+              addMinutesToLocalInput(seededStart, 30),
+            status: "booked",
+          },
+        }));
+
+        setNotice("Lead marked as booked. You can create the appointment below.");
+      }
+
+      if (kind === "not_interested") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "Not interested",
+            notes,
+          });
+        }
+
+        await updateLead(selectedLeadId, {
+          pipelineStatus: "not_interested",
+        });
+
+        setNotice("Lead marked as not interested.");
+      }
+
+      if (kind === "completed") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "Visit completed",
+            notes,
+          });
+        }
+
+        await updateLead(selectedLeadId, {
+          pipelineStatus: "completed",
+        });
+
+        setNotice("Lead marked as completed.");
+      }
+
+      if (kind === "no_show") {
+        if (currentPendingFollowup) {
+          await updateFollowupStatus(currentPendingFollowup.id, {
+            status: "done",
+            outcome: "Patient no-show",
+            notes,
+          });
+        }
+
+        await updateLead(selectedLeadId, {
+          pipelineStatus: "no_show",
+        });
+
+        setNotice("Lead marked as no show.");
+      }
+
+      await loadLeadsPage();
+      await loadLeadDrawer(selectedLeadId);
+    } catch (err) {
+      setError(err.message || "Could not save lead outcome.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   const selectedLeadAssignee = drawer.lead ? getAssigneeLabel(drawer.lead) : "—";
   const showingFrom = filteredLeads.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(page * PAGE_SIZE, filteredLeads.length);
+
+  const currentPendingFollowup = useMemo(() => {
+    return drawer.followups.find((item) => item.status === "pending") || null;
+  }, [drawer.followups]);
 
   return (
     <div className="stack">
@@ -446,6 +668,12 @@ export default function LeadsPage() {
           <div>
             <h2>Lead filters</h2>
             <p className="muted">Use backend filters first, then local assignment scope and pagination.</p>
+          </div>
+
+          <div className="record-actions">
+            <Link href="/leads/new" className="primary-button">
+              Create lead
+            </Link>
           </div>
         </div>
 
@@ -556,6 +784,32 @@ export default function LeadsPage() {
                 : `Showing ${showingFrom}-${showingTo} of ${filteredLeads.length} leads`}
             </p>
           </div>
+
+          <div className="record-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => applyAssignmentScope("unassigned")}
+            >
+              Unassigned ({unassignedLeadCount})
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => applyAssignmentScope("mine")}
+            >
+              My leads ({myLeadCount})
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => applyAssignmentScope("all")}
+            >
+              All visible
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -606,17 +860,21 @@ export default function LeadsPage() {
                             {(isMine || isUnassigned) && (
                               <button
                                 type="button"
-                                className="secondary-button compact-button"
+                                className={
+                                  isUnassigned
+                                    ? "primary-button compact-button"
+                                    : "secondary-button compact-button"
+                                }
                                 disabled={busyKey === `assign-${lead.id}`}
                                 onClick={() => handleAssignToggle(lead)}
                               >
-                                {isMine ? "Unassign" : "Assign to me"}
+                                {isMine ? "Unassign" : "Pickup"}
                               </button>
                             )}
 
                             <button
                               type="button"
-                              className="primary-button compact-button"
+                              className="secondary-button compact-button"
                               onClick={() => openLeadDrawer(lead.id)}
                             >
                               Open
@@ -778,13 +1036,17 @@ export default function LeadsPage() {
                       !drawer.lead.assignedToUserId) && (
                       <button
                         type="button"
-                        className="secondary-button"
+                        className={
+                          Number(drawer.lead.assignedToUserId) === Number(user?.id)
+                            ? "secondary-button"
+                            : "primary-button"
+                        }
                         disabled={busyKey === `assign-${drawer.lead.id}`}
                         onClick={() => handleAssignToggle(drawer.lead)}
                       >
                         {Number(drawer.lead.assignedToUserId) === Number(user?.id)
                           ? "Unassign from me"
-                          : "Assign to me"}
+                          : "Pickup lead"}
                       </button>
                     )}
                   </div>
@@ -830,6 +1092,107 @@ export default function LeadsPage() {
                     {drawer.lead.nextFollowupAt
                       ? formatDateTime(drawer.lead.nextFollowupAt)
                       : "Not scheduled"}
+                  </p>
+                </section>
+
+                <section className="page-card drawer-card">
+                  <div className="section-heading">
+                    <div>
+                      <h3>Quick outcome</h3>
+                      <p className="muted">
+                        Use this after a call or visit to save what happened and move
+                        the lead to the next step faster.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="field">
+                      <label>Next follow-up time</label>
+                      <input
+                        type="datetime-local"
+                        value={drawer.outcomeForm.nextFollowupAt}
+                        onChange={(event) =>
+                          updateOutcomeForm("nextFollowupAt", event.target.value)
+                        }
+                      />
+                      <p className="muted">
+                        Use this for no answer or callback requested.
+                      </p>
+                    </div>
+
+                    <div className="field field-span-2">
+                      <label>Outcome note</label>
+                      <textarea
+                        value={drawer.outcomeForm.notes}
+                        onChange={(event) =>
+                          updateOutcomeForm("notes", event.target.value)
+                        }
+                        placeholder="What happened on the call or visit?"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="record-actions">
+                    <button
+                      type="button"
+                      className="secondary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-no_answer"}
+                      onClick={() => handleQuickOutcome("no_answer")}
+                    >
+                      No answer + next follow-up
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-callback_requested"}
+                      onClick={() => handleQuickOutcome("callback_requested")}
+                    >
+                      Callback requested
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-booked"}
+                      onClick={() => handleQuickOutcome("booked")}
+                    >
+                      Mark booked
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-not_interested"}
+                      onClick={() => handleQuickOutcome("not_interested")}
+                    >
+                      Not interested
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-completed"}
+                      onClick={() => handleQuickOutcome("completed")}
+                    >
+                      Visit completed
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button compact-button"
+                      disabled={busyKey === "drawer-outcome-no_show"}
+                      onClick={() => handleQuickOutcome("no_show")}
+                    >
+                      No show
+                    </button>
+                  </div>
+
+                  <p className="muted">
+                    {currentPendingFollowup
+                      ? `Current open follow-up: ${formatDateTime(currentPendingFollowup.dueAt)}`
+                      : "No open follow-up right now. You can still save an outcome and set the next step."}
                   </p>
                 </section>
 
@@ -887,6 +1250,10 @@ export default function LeadsPage() {
                             <p className="muted">
                               {followup.notes || "No follow-up note added yet."}
                             </p>
+
+                            {followup.outcome && (
+                              <p className="muted">Outcome: {followup.outcome}</p>
+                            )}
                           </div>
 
                           {followup.status === "pending" && (

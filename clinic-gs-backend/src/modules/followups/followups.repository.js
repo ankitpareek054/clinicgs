@@ -90,7 +90,7 @@ async function createFollowup(input, client = null) {
       notes,
       created_by_user_id
     )
-    VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+    VALUES ($1, $2, $3, 'pending', $4, $5, NULLIF($6, '')::bigint)
     RETURNING
       id,
       clinic_id,
@@ -174,8 +174,14 @@ async function updateFollowupStatus(followupId, input, client = null) {
       status = $2,
       outcome = COALESCE($3, outcome),
       notes = COALESCE($4, notes),
-      completed_by_user_id = CASE WHEN $2 IN ('done', 'skipped') THEN $5 ELSE NULL END,
-      completed_at = CASE WHEN $2 IN ('done', 'skipped') THEN NOW() ELSE NULL END
+      completed_by_user_id = CASE
+        WHEN $2 IN ('done', 'skipped') THEN NULLIF($5, '')::bigint
+        ELSE NULL
+      END,
+      completed_at = CASE
+        WHEN $2 IN ('done', 'skipped') THEN NOW()
+        ELSE NULL
+      END
     WHERE id = $1
     RETURNING
       id,
