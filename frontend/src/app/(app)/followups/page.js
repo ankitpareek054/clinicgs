@@ -1274,37 +1274,30 @@ export default function FollowupsPage() {
 
           <div className="record-actions followup-toolbar-actions">
 
-            <button
+<div className="lead-filter-trigger-wrap">
+  <button
+    type="button"
+    className={`secondary-button lead-filter-trigger ${
+      showFilters || hasActiveFilters ? "lead-filter-trigger-active" : ""
+    }`}
+    onClick={() => setShowFilters((current) => !current)}
+    aria-pressed={showFilters || hasActiveFilters}
+  >
+    Filters
+  </button>
 
-              type="button"
-
-              className="secondary-button"
-
-              onClick={() => setShowFilters((current) => !current)}
-
-            >
-
-              {showFilters ? "Hide filters" : "Filters"}
-
-            </button>
-
-
-
-            <button
-
-              type="button"
-
-              className="secondary-button"
-
-              disabled={!hasActiveFilters}
-
-              onClick={handleClearFilters}
-
-            >
-
-              Clear all
-
-            </button>
+  {hasActiveFilters && (
+    <button
+      type="button"
+      className="lead-filter-clear-badge"
+      onClick={handleClearFilters}
+      aria-label="Clear applied filters"
+      title="Clear applied filters"
+    >
+      ×
+    </button>
+  )}
+</div>
 
 
 
@@ -1476,31 +1469,19 @@ export default function FollowupsPage() {
 
 
 
-            <div className="record-actions inline-filter-actions">
+<div className="record-actions inline-filter-actions">
+  <button type="submit" className="primary-button">
+    Apply filters
+  </button>
 
-              <button type="submit" className="primary-button">
-
-                Apply filters
-
-              </button>
-
-
-
-              <button
-
-                type="button"
-
-                className="secondary-button"
-
-                onClick={handleClearFilters}
-
-              >
-
-                Clear all
-
-              </button>
-
-            </div>
+  <button
+    type="button"
+    className="secondary-button"
+    onClick={() => setShowFilters(false)}
+  >
+    Close
+  </button>
+</div>
 
           </form>
 
@@ -2339,7 +2320,57 @@ export default function FollowupsPage() {
 
 
 
+.lead-filter-trigger-wrap {
+  position: relative;
+  display: inline-flex;
+}
 
+.lead-filter-trigger {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lead-filter-trigger-active {
+  background: rgba(48, 54, 64, 0.12);
+  border-color: rgba(48, 54, 64, 0.28);
+  color: var(--text-soft, #2e3b4e);
+}
+
+.lead-filter-clear-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #2f3138;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(20, 24, 32, 0.18);
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.lead-filter-clear-badge:hover {
+  background: #23252b;
+  transform: scale(1.04);
+}
+
+.lead-filter-clear-badge:focus-visible {
+  outline: 2px solid rgba(92, 118, 168, 0.35);
+  outline-offset: 2px;
+}
 
 
 

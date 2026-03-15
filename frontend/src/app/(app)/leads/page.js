@@ -4,11 +4,13 @@
 
 import Link from "next/link";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import StatusPill from "../../../components/shared/statusPill";
 
-import { formatDateTime, toIsoFromLocalInput } from "../../../lib/date/date";
+import { formatDateTime } from "../../../lib/date/date";
 
 import {
 
@@ -68,7 +70,31 @@ const LEAD_SOURCE_OPTIONS = [
 
 
 
-function buildInitialFilters(user) {
+function getDefaultAssignmentScope(user) {
+
+  return user?.role === "receptionist" ? "mine" : "all";
+
+}
+
+
+
+function normalizeScope(scope, user) {
+
+  if (scope === "mine" || scope === "unassigned" || scope === "all") {
+
+    return scope;
+
+  }
+
+
+
+  return getDefaultAssignmentScope(user);
+
+}
+
+
+
+function buildInitialFilters(user, scopeOverride) {
 
   return {
 
@@ -78,7 +104,7 @@ function buildInitialFilters(user) {
 
     source: "",
 
-    assignmentScope: user?.role === "receptionist" ? "mine" : "all",
+    assignmentScope: normalizeScope(scopeOverride, user),
 
   };
 
@@ -346,11 +372,23 @@ export default function LeadsPage() {
 
   const { user } = useAuth();
 
+  const router = useRouter();
+
+  const pathname = usePathname();
+
+  const searchParams = useSearchParams();
+
+  const scopeParam = searchParams.get("scope");
 
 
-  const [filterForm, setFilterForm] = useState(buildInitialFilters(user));
 
-  const [appliedFilters, setAppliedFilters] = useState(buildInitialFilters(user));
+  const [filterForm, setFilterForm] = useState(buildInitialFilters(user, scopeParam));
+
+  const [appliedFilters, setAppliedFilters] = useState(
+
+    buildInitialFilters(user, scopeParam)
+
+  );
 
   const [showFilters, setShowFilters] = useState(false);
 
@@ -382,19 +420,71 @@ export default function LeadsPage() {
 
 
 
+  const replaceScopeInUrl = useCallback(
+
+    (scope) => {
+
+      const params = new URLSearchParams(searchParams.toString());
+
+      const defaultScope = getDefaultAssignmentScope(user);
+
+
+
+      if (!scope || scope === defaultScope) {
+
+        params.delete("scope");
+
+      } else {
+
+        params.set("scope", scope);
+
+      }
+
+
+
+      const query = params.toString();
+
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+
+    },
+
+    [pathname, router, searchParams, user]
+
+  );
+
+
+
   useEffect(() => {
 
-    const next = buildInitialFilters(user);
+    const normalizedScope = normalizeScope(scopeParam, user);
 
-    setFilterForm(next);
 
-    setAppliedFilters(next);
+
+    setFilterForm((current) => ({
+
+      ...current,
+
+      assignmentScope: normalizedScope,
+
+    }));
+
+
+
+    setAppliedFilters((current) => ({
+
+      ...current,
+
+      assignmentScope: normalizedScope,
+
+    }));
+
+
 
     setPage(1);
 
     setSortState(EMPTY_SORT);
 
-  }, [user]);
+  }, [scopeParam, user]);
 
 
 
@@ -474,7 +564,13 @@ export default function LeadsPage() {
 
       if (!lead?.assignedToUserId) return "Unassigned";
 
-      return usersById[lead.assignedToUserId]?.fullName || `User #${lead.assignedToUserId}`;
+      return (
+
+        usersById[lead.assignedToUserId]?.fullName ||
+
+        `User #${lead.assignedToUserId}`
+
+      );
 
     },
 
@@ -492,7 +588,11 @@ export default function LeadsPage() {
 
     if (appliedFilters.assignmentScope === "mine") {
 
-      rows = rows.filter((lead) => Number(lead.assignedToUserId) === Number(user?.id));
+      rows = rows.filter(
+
+        (lead) => Number(lead.assignedToUserId) === Number(user?.id)
+
+      );
 
     }
 
@@ -602,7 +702,7 @@ export default function LeadsPage() {
 
         appliedFilters.source ||
 
-        appliedFilters.assignmentScope !== buildInitialFilters(user).assignmentScope
+        appliedFilters.assignmentScope !== getDefaultAssignmentScope(user)
 
     );
 
@@ -742,6 +842,8 @@ export default function LeadsPage() {
 
     }));
 
+
+
     setAppliedFilters((current) => ({
 
       ...current,
@@ -749,6 +851,10 @@ export default function LeadsPage() {
       assignmentScope: scope,
 
     }));
+
+
+
+    replaceScopeInUrl(scope);
 
     setPage(1);
 
@@ -762,6 +868,8 @@ export default function LeadsPage() {
 
     setAppliedFilters(filterForm);
 
+    replaceScopeInUrl(filterForm.assignmentScope);
+
     setPage(1);
 
   }
@@ -772,11 +880,15 @@ export default function LeadsPage() {
 
     const next = buildInitialFilters(user);
 
+
+
     setFilterForm(next);
 
     setAppliedFilters(next);
 
     setShowFilters(false);
+
+    replaceScopeInUrl(next.assignmentScope);
 
     setPage(1);
 
@@ -916,13 +1028,11 @@ export default function LeadsPage() {
 
     Boolean(drawer.lead) && (selectedLeadIsMine || !drawer.lead.assignedToUserId);
 
-  const selectedLeadStatus =
+  const selectedLeadStatus = drawer.isEditingLeadSummary
 
-    drawer.isEditingLeadSummary
+    ? drawer.pipelineStatus
 
-      ? drawer.pipelineStatus
-
-      : drawer.lead?.pipelineStatus || "new";
+    : drawer.lead?.pipelineStatus || "new";
 
 
 
@@ -942,7 +1052,9 @@ export default function LeadsPage() {
 
         <p className="muted">
 
-          Search leads, manage ownership, update pipeline, and edit lead details from one place.
+          Search leads, manage ownership, update pipeline, and edit lead details
+
+          from one place.
 
         </p>
 
@@ -1122,37 +1234,30 @@ export default function LeadsPage() {
 
 
 
-            <button
+<div className="lead-filter-trigger-wrap">
+  <button
+    type="button"
+    className={`secondary-button lead-filter-trigger ${
+      showFilters || hasActiveFilters ? "lead-filter-trigger-active" : ""
+    }`}
+    onClick={() => setShowFilters((current) => !current)}
+    aria-pressed={showFilters || hasActiveFilters}
+  >
+    Filters
+  </button>
 
-              type="button"
-
-              className="secondary-button"
-
-              onClick={() => setShowFilters((current) => !current)}
-
-            >
-
-              {showFilters ? "Hide filters" : "Filters"}
-
-            </button>
-
-
-
-            <button
-
-              type="button"
-
-              className="secondary-button"
-
-              onClick={handleClearFilters}
-
-              disabled={!hasActiveFilters}
-
-            >
-
-              Clear all
-
-            </button>
+  {hasActiveFilters && (
+    <button
+      type="button"
+      className="lead-filter-clear-badge"
+      onClick={handleClearFilters}
+      aria-label="Clear applied filters"
+      title="Clear applied filters"
+    >
+      ×
+    </button>
+  )}
+</div>
 
 
 
@@ -1326,31 +1431,19 @@ export default function LeadsPage() {
 
 
 
-            <div className="record-actions inline-filter-actions">
+<div className="record-actions inline-filter-actions">
+  <button type="submit" className="primary-button">
+    Apply filters
+  </button>
 
-              <button type="submit" className="primary-button">
-
-                Apply filters
-
-              </button>
-
-
-
-              <button
-
-                type="button"
-
-                className="secondary-button"
-
-                onClick={handleClearFilters}
-
-              >
-
-                Clear all
-
-              </button>
-
-            </div>
+  <button
+    type="button"
+    className="secondary-button"
+    onClick={() => setShowFilters(false)}
+  >
+    Close
+  </button>
+</div>
 
           </form>
 
@@ -1388,7 +1481,11 @@ export default function LeadsPage() {
 
                         onClick={() =>
 
-                          setSortState((current) => getNextSortState(current, "patient"))
+                          setSortState((current) =>
+
+                            getNextSortState(current, "patient")
+
+                          )
 
                         }
 
@@ -1422,7 +1519,11 @@ export default function LeadsPage() {
 
                         onClick={() =>
 
-                          setSortState((current) => getNextSortState(current, "status"))
+                          setSortState((current) =>
+
+                            getNextSortState(current, "status")
+
+                          )
 
                         }
 
@@ -1456,7 +1557,11 @@ export default function LeadsPage() {
 
                         onClick={() =>
 
-                          setSortState((current) => getNextSortState(current, "assignee"))
+                          setSortState((current) =>
+
+                            getNextSortState(current, "assignee")
+
+                          )
 
                         }
 
@@ -1490,7 +1595,11 @@ export default function LeadsPage() {
 
                         onClick={() =>
 
-                          setSortState((current) => getNextSortState(current, "phone"))
+                          setSortState((current) =>
+
+                            getNextSortState(current, "phone")
+
+                          )
 
                         }
 
@@ -1524,7 +1633,11 @@ export default function LeadsPage() {
 
                         onClick={() =>
 
-                          setSortState((current) => getNextSortState(current, "source"))
+                          setSortState((current) =>
+
+                            getNextSortState(current, "source")
+
+                          )
 
                         }
 
@@ -1598,7 +1711,9 @@ export default function LeadsPage() {
 
                   {pagedLeads.map((lead) => {
 
-                    const isMine = Number(lead.assignedToUserId) === Number(user?.id);
+                    const isMine =
+
+                      Number(lead.assignedToUserId) === Number(user?.id);
 
                     const isUnassigned = !lead.assignedToUserId;
 
@@ -1750,7 +1865,11 @@ export default function LeadsPage() {
 
                 disabled={page === totalPages}
 
-                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                onClick={() =>
+
+                  setPage((current) => Math.min(totalPages, current + 1))
+
+                }
 
               >
 
@@ -2320,10 +2439,51 @@ export default function LeadsPage() {
 
 
 
- 
+        .table-sort-button {
+
+          display: inline-flex;
+
+          align-items: center;
+
+          gap: 6px;
+
+          padding: 0;
+
+          border: none;
+
+          background: transparent;
+
+          cursor: pointer;
+
+          color: inherit;
+
+          font-family: inherit;
+
+          font-size: inherit;
+
+          font-style: inherit;
+
+          font-weight: inherit;
+
+          line-height: inherit;
+
+          letter-spacing: inherit;
+
+          text-transform: inherit;
+
+        }
 
 
 
+        .table-sort-arrow {
+
+          font-size: 0.85em;
+
+          line-height: 1;
+
+          color: var(--muted, #66758b);
+
+        }
 
 
 
@@ -2360,6 +2520,58 @@ export default function LeadsPage() {
           flex: 1;
 
         }
+
+        .lead-filter-trigger-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.lead-filter-trigger {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.lead-filter-trigger-active {
+  background: rgba(48, 54, 64, 0.12);
+  border-color: rgba(48, 54, 64, 0.28);
+  color: var(--text-soft, #2e3b4e);
+}
+
+.lead-filter-clear-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #2f3138;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(20, 24, 32, 0.18);
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.lead-filter-clear-badge:hover {
+  background: #23252b;
+  transform: scale(1.04);
+}
+
+.lead-filter-clear-badge:focus-visible {
+  outline: 2px solid rgba(92, 118, 168, 0.35);
+  outline-offset: 2px;
+}
 
 
 
