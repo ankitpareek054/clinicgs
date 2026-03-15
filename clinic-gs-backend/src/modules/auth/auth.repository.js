@@ -6,6 +6,7 @@ function sanitizeUserRow(row) {
   return {
     id: row.id,
     clinic_id: row.clinic_id,
+    clinic_name: row.clinic_name,
     full_name: row.full_name,
     email: row.email,
     phone: row.phone,
@@ -21,20 +22,22 @@ function sanitizeUserRow(row) {
 async function verifyUserCredentials(email, password) {
   const query = `
     SELECT
-      id,
-      clinic_id,
-      full_name,
-      email::text AS email,
-      phone,
-      role,
-      status,
-      must_reset_password,
-      last_login_at,
-      created_at,
-      updated_at
-    FROM users
-    WHERE lower(email::text) = lower($1)
-      AND password_hash = crypt($2, password_hash)
+      u.id,
+      u.clinic_id,
+      c.name AS clinic_name,
+      u.full_name,
+      u.email::text AS email,
+      u.phone,
+      u.role,
+      u.status,
+      u.must_reset_password,
+      u.last_login_at,
+      u.created_at,
+      u.updated_at
+    FROM users u
+    LEFT JOIN clinics c ON c.id = u.clinic_id
+    WHERE lower(u.email::text) = lower($1)
+      AND u.password_hash = crypt($2, u.password_hash)
     LIMIT 1
   `;
 
@@ -45,19 +48,21 @@ async function verifyUserCredentials(email, password) {
 async function findUserSessionById(userId) {
   const query = `
     SELECT
-      id,
-      clinic_id,
-      full_name,
-      email::text AS email,
-      phone,
-      role,
-      status,
-      must_reset_password,
-      last_login_at,
-      created_at,
-      updated_at
-    FROM users
-    WHERE id = $1
+      u.id,
+      u.clinic_id,
+      c.name AS clinic_name,
+      u.full_name,
+      u.email::text AS email,
+      u.phone,
+      u.role,
+      u.status,
+      u.must_reset_password,
+      u.last_login_at,
+      u.created_at,
+      u.updated_at
+    FROM users u
+    LEFT JOIN clinics c ON c.id = u.clinic_id
+    WHERE u.id = $1
     LIMIT 1
   `;
 
@@ -94,10 +99,8 @@ async function findInviteByTokenHash(tokenHash, client = null) {
       c.name AS clinic_name,
       c.slug AS clinic_slug
     FROM user_invites ui
-    INNER JOIN users u
-      ON u.id = ui.user_id
-    LEFT JOIN clinics c
-      ON c.id = ui.clinic_id
+    INNER JOIN users u ON u.id = ui.user_id
+    LEFT JOIN clinics c ON c.id = ui.clinic_id
     WHERE ui.token_hash = $1
     LIMIT 1
   `;

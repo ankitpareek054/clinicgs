@@ -18,6 +18,7 @@ function buildSafeUser(user) {
   return {
     id: user.id,
     clinicId: user.clinic_id,
+    clinicName: user.clinic_name || '',
     fullName: user.full_name,
     email: user.email,
     phone: user.phone,
@@ -52,7 +53,6 @@ async function login(input) {
   }
 
   await authRepository.touchLastLogin(user.id);
-
   const refreshedUser = await authRepository.findUserSessionById(user.id);
   const token = signAuthToken(buildAuthPayload(refreshedUser));
 
@@ -113,7 +113,10 @@ async function acceptInvite(input) {
   assertPasswordStrength(input.password);
 
   return withTransaction(async (client) => {
-    const invite = await authRepository.findInviteByTokenHash(hashInviteToken(input.token), client);
+    const invite = await authRepository.findInviteByTokenHash(
+      hashInviteToken(input.token),
+      client
+    );
 
     if (!invite) {
       throw new ApiError(404, AUTH_MESSAGES.INVALID_OR_EXPIRED_INVITE, {
@@ -133,7 +136,12 @@ async function acceptInvite(input) {
       });
     }
 
-    const user = await authRepository.activateInvitedUser(invite.user_id, input.password, client);
+    const user = await authRepository.activateInvitedUser(
+      invite.user_id,
+      input.password,
+      client
+    );
+
     await authRepository.markInviteAccepted(invite.id, client);
     await authRepository.touchLastLogin(user.id, client);
 
