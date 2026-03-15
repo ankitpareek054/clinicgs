@@ -11,6 +11,7 @@ const receptionistNav = [
   { href: "/my-tasks", label: "My Tasks" },
   { href: "/leads", label: "Leads" },
   { href: "/appointments", label: "Appointments" },
+  { href: "/followups", label: "Follow Ups" },
 ];
 
 const ownerNav = [
@@ -18,6 +19,8 @@ const ownerNav = [
   { href: "/my-tasks", label: "My Tasks" },
   { href: "/leads", label: "Leads" },
   { href: "/appointments", label: "Appointments" },
+  { href: "/followups", label: "Follow Ups" },
+
 ];
 
 export default function ProtectedShell({ children }) {

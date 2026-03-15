@@ -3,24 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import StatusPill from "../../../components/shared/statusPill";
-import {
-  addMinutesToLocalInput,
-  formatDateTime,
-  formatDateTimeInputValue,
-  sortByDateAsc,
-  sortByDateDesc,
-  toIsoFromLocalInput,
-} from "../../../lib/date/date";
-import {
-  appointmentStatusOptions,
-  createAppointment,
-  listAppointments,
-} from "../../../lib/receptionist/appointmentsApi";
-import {
-  createFollowup,
-  listFollowups,
-  updateFollowupStatus,
-} from "../../../lib/receptionist/followupsApi";
+import { formatDateTime, sortByDateDesc } from "../../../lib/date/date";
 import {
   assignLeadToSelf,
   getLeadById,
@@ -33,6 +16,25 @@ import { listUsers } from "../../../lib/receptionist/usersApi";
 import { useAuth } from "../../../providers/sessionProvider";
 
 const PAGE_SIZE = 10;
+
+/*
+  Replace this with the same shared source constant used in create-lead
+  if you already have one exported somewhere.
+*/
+const LEAD_SOURCE_OPTIONS = [
+  "Walk-in",
+  "Front Desk",
+  "Phone Call",
+  "WhatsApp",
+  "Website",
+  "Google Ads",
+  "Google Search",
+  "Instagram",
+  "Facebook",
+  "Referral",
+  "Public Form",
+  "Other",
+];
 
 function buildInitialFilters(user) {
   return {
@@ -52,7 +54,6 @@ function buildLeadForm(lead) {
       source: "",
       serviceRequested: "",
       notes: "",
-      preferredAppointmentAt: "",
     };
   }
 
@@ -63,58 +64,27 @@ function buildLeadForm(lead) {
     source: lead.source || "",
     serviceRequested: lead.serviceRequested || "",
     notes: lead.notes || "",
-    preferredAppointmentAt: formatDateTimeInputValue(lead.preferredAppointmentAt),
   };
-}
-
-function getDefaultNextFollowupInput() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(date.getHours() + 1);
-  date.setMinutes(0);
-  date.setSeconds(0);
-  date.setMilliseconds(0);
-
-  return formatDateTimeInputValue(date.toISOString());
-}
-
-function getDefaultAppointmentStartInput(lead) {
-  if (lead?.preferredAppointmentAt) {
-    return formatDateTimeInputValue(lead.preferredAppointmentAt);
-  }
-
-  const date = new Date();
-  date.setHours(date.getHours() + 1);
-  date.setMinutes(0);
-  date.setSeconds(0);
-  date.setMilliseconds(0);
-
-  return formatDateTimeInputValue(date.toISOString());
 }
 
 function buildDrawerState() {
   return {
     isLoading: false,
+    isEditingLeadSummary: false,
     lead: null,
-    followups: [],
-    appointments: [],
     leadForm: buildLeadForm(null),
     pipelineStatus: "new",
-    followupForm: {
-      dueAt: "",
-      notes: "",
-    },
-    appointmentForm: {
-      startTime: "",
-      endTime: "",
-      status: "booked",
-      notes: "",
-    },
-    outcomeForm: {
-      nextFollowupAt: getDefaultNextFollowupInput(),
-      notes: "",
-    },
   };
+}
+
+function getLeadInitials(name) {
+  if (!name) return "LD";
+
+  const parts = String(name).trim().split(/\s+/).filter(Boolean).slice(0, 2);
+
+  if (!parts.length) return "LD";
+
+  return parts.map((part) => part[0]?.toUpperCase() || "").join("");
 }
 
 export default function LeadsPage() {
@@ -191,16 +161,6 @@ export default function LeadsPage() {
     return sortByDateDesc(rows, (item) => item.createdAt);
   }, [appliedFilters.assignmentScope, leads, user]);
 
-  const unassignedLeadCount = useMemo(() => {
-    return leads.filter((lead) => !lead.assignedToUserId).length;
-  }, [leads]);
-
-  const myLeadCount = useMemo(() => {
-    return leads.filter(
-      (lead) => Number(lead.assignedToUserId) === Number(user?.id)
-    ).length;
-  }, [leads, user]);
-
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
 
   useEffect(() => {
@@ -213,6 +173,29 @@ export default function LeadsPage() {
     const start = (page - 1) * PAGE_SIZE;
     return filteredLeads.slice(start, start + PAGE_SIZE);
   }, [filteredLeads, page]);
+
+  const unassignedLeadCount = useMemo(() => {
+    return leads.filter((lead) => !lead.assignedToUserId).length;
+  }, [leads]);
+
+  const myLeadCount = useMemo(() => {
+    return leads.filter(
+      (lead) => Number(lead.assignedToUserId) === Number(user?.id)
+    ).length;
+  }, [leads, user]);
+
+  const bookedLeadCount = useMemo(() => {
+    return leads.filter((lead) => lead.pipelineStatus === "booked").length;
+  }, [leads]);
+
+  const overdueLeadCount = useMemo(() => {
+    const now = Date.now();
+
+    return leads.filter((lead) => {
+      if (!lead.nextFollowupAt) return false;
+      return new Date(lead.nextFollowupAt).getTime() < now;
+    }).length;
+  }, [leads]);
 
   const getAssigneeLabel = useCallback(
     (lead) => {
@@ -229,33 +212,14 @@ export default function LeadsPage() {
     }));
 
     try {
-      const [lead, followups, appointments] = await Promise.all([
-        getLeadById(leadId),
-        listFollowups({ leadId }),
-        listAppointments({ leadId }),
-      ]);
+      const lead = await getLeadById(leadId);
 
       setDrawer({
         isLoading: false,
+        isEditingLeadSummary: false,
         lead,
-        followups: sortByDateAsc(followups, (item) => item.dueAt),
-        appointments: sortByDateAsc(appointments, (item) => item.startTime),
         leadForm: buildLeadForm(lead),
         pipelineStatus: lead.pipelineStatus || "new",
-        followupForm: {
-          dueAt: "",
-          notes: "",
-        },
-        appointmentForm: {
-          startTime: "",
-          endTime: "",
-          status: "booked",
-          notes: "",
-        },
-        outcomeForm: {
-          nextFollowupAt: getDefaultNextFollowupInput(),
-          notes: "",
-        },
       });
     } catch (err) {
       setDrawer(buildDrawerState());
@@ -284,33 +248,27 @@ export default function LeadsPage() {
     }));
   }
 
-  function updateFollowupForm(field, value) {
+  function startEditingLeadSummary() {
+    setError("");
+    setNotice("");
+
     setDrawer((current) => ({
       ...current,
-      followupForm: {
-        ...current.followupForm,
-        [field]: value,
-      },
+      isEditingLeadSummary: true,
+      leadForm: buildLeadForm(current.lead),
+      pipelineStatus: current.lead?.pipelineStatus || "new",
     }));
   }
 
-  function updateAppointmentForm(field, value) {
-    setDrawer((current) => ({
-      ...current,
-      appointmentForm: {
-        ...current.appointmentForm,
-        [field]: value,
-      },
-    }));
-  }
+  function cancelEditingLeadSummary() {
+    setError("");
+    setNotice("");
 
-  function updateOutcomeForm(field, value) {
     setDrawer((current) => ({
       ...current,
-      outcomeForm: {
-        ...current.outcomeForm,
-        [field]: value,
-      },
+      isEditingLeadSummary: false,
+      leadForm: buildLeadForm(current.lead),
+      pipelineStatus: current.lead?.pipelineStatus || "new",
     }));
   }
 
@@ -354,10 +312,10 @@ export default function LeadsPage() {
     }
   }
 
-  async function handleSaveLeadProfile() {
+  async function handleSaveLeadSummary() {
     if (!selectedLeadId) return;
 
-    setBusyKey("drawer-save-profile");
+    setBusyKey("drawer-save-summary");
     setError("");
     setNotice("");
 
@@ -366,294 +324,42 @@ export default function LeadsPage() {
         patientName: drawer.leadForm.patientName,
         phone: drawer.leadForm.phone,
         email: drawer.leadForm.email,
-        source: drawer.leadForm.source,
+        source: drawer.leadForm.source || null,
         serviceRequested: drawer.leadForm.serviceRequested || null,
         notes: drawer.leadForm.notes || null,
-        preferredAppointmentAt: drawer.leadForm.preferredAppointmentAt
-          ? toIsoFromLocalInput(drawer.leadForm.preferredAppointmentAt)
-          : null,
-      });
-
-      setNotice("Lead profile updated.");
-      await loadLeadsPage();
-      await loadLeadDrawer(selectedLeadId);
-    } catch (err) {
-      setError(err.message || "Could not update lead profile.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function handleSavePipeline() {
-    if (!selectedLeadId) return;
-
-    setBusyKey("drawer-save-pipeline");
-    setError("");
-    setNotice("");
-
-    try {
-      await updateLead(selectedLeadId, {
         pipelineStatus: drawer.pipelineStatus,
       });
 
-      setNotice("Lead pipeline updated.");
+      setNotice("Lead summary updated.");
       await loadLeadsPage();
       await loadLeadDrawer(selectedLeadId);
     } catch (err) {
-      setError(err.message || "Could not update pipeline.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function handleCreateFollowup() {
-    if (!selectedLeadId) return;
-
-    if (!drawer.followupForm.dueAt) {
-      setError("Please choose a follow-up date and time first.");
-      return;
-    }
-
-    setBusyKey("drawer-create-followup");
-    setError("");
-    setNotice("");
-
-    try {
-      await createFollowup({
-        leadId: selectedLeadId,
-        dueAt: toIsoFromLocalInput(drawer.followupForm.dueAt),
-        notes: drawer.followupForm.notes || null,
-        outcome: null,
-      });
-
-      setNotice("Follow-up created.");
-      await loadLeadsPage();
-      await loadLeadDrawer(selectedLeadId);
-    } catch (err) {
-      setError(err.message || "Could not create follow-up.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function handleFollowupStatus(followupId, status) {
-    setBusyKey(`drawer-followup-${followupId}`);
-    setError("");
-    setNotice("");
-
-    try {
-      await updateFollowupStatus(followupId, {
-        status,
-      });
-
-      setNotice(`Follow-up marked as ${status}.`);
-      await loadLeadsPage();
-      await loadLeadDrawer(selectedLeadId);
-    } catch (err) {
-      setError(err.message || "Could not update follow-up status.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function handleCreateAppointment() {
-    if (!selectedLeadId) return;
-
-    if (!drawer.appointmentForm.startTime || !drawer.appointmentForm.endTime) {
-      setError("Please choose appointment start and end time first.");
-      return;
-    }
-
-    setBusyKey("drawer-create-appointment");
-    setError("");
-    setNotice("");
-
-    try {
-      await createAppointment({
-        leadId: selectedLeadId,
-        startTime: toIsoFromLocalInput(drawer.appointmentForm.startTime),
-        endTime: toIsoFromLocalInput(drawer.appointmentForm.endTime),
-        status: drawer.appointmentForm.status,
-        notes: drawer.appointmentForm.notes || null,
-      });
-
-      setNotice("Appointment created.");
-      await loadLeadsPage();
-      await loadLeadDrawer(selectedLeadId);
-    } catch (err) {
-      setError(err.message || "Could not create appointment.");
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function handleQuickOutcome(kind) {
-    if (!selectedLeadId) return;
-
-    const notes = drawer.outcomeForm.notes.trim() || null;
-    const nextFollowupAt = drawer.outcomeForm.nextFollowupAt;
-    const currentPendingFollowup =
-      drawer.followups.find((item) => item.status === "pending") || null;
-
-    if (
-      (kind === "no_answer" || kind === "callback_requested") &&
-      !nextFollowupAt
-    ) {
-      setError("Please choose the next follow-up time first.");
-      return;
-    }
-
-    setBusyKey(`drawer-outcome-${kind}`);
-    setError("");
-    setNotice("");
-
-    try {
-      if (kind === "no_answer") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "No answer",
-            notes,
-          });
-        }
-
-        await createFollowup({
-          leadId: selectedLeadId,
-          dueAt: toIsoFromLocalInput(nextFollowupAt),
-          notes: notes || "Retry patient contact.",
-          outcome: "Retry contact",
-        });
-
-        setNotice("No-answer outcome saved and next follow-up scheduled.");
-      }
-
-      if (kind === "callback_requested") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "Callback requested",
-            notes,
-          });
-        }
-
-        await updateLead(selectedLeadId, {
-          pipelineStatus: "contacted",
-        });
-
-        await createFollowup({
-          leadId: selectedLeadId,
-          dueAt: toIsoFromLocalInput(nextFollowupAt),
-          notes: notes || "Patient requested a callback.",
-          outcome: "Callback requested",
-        });
-
-        setNotice("Callback outcome saved and next follow-up scheduled.");
-      }
-
-      if (kind === "booked") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "Appointment booked",
-            notes,
-          });
-        }
-
-        await updateLead(selectedLeadId, {
-          pipelineStatus: "booked",
-        });
-
-        const seededStart =
-          drawer.appointmentForm.startTime ||
-          getDefaultAppointmentStartInput(drawer.lead);
-
-        setDrawer((current) => ({
-          ...current,
-          appointmentForm: {
-            ...current.appointmentForm,
-            startTime: current.appointmentForm.startTime || seededStart,
-            endTime:
-              current.appointmentForm.endTime ||
-              addMinutesToLocalInput(seededStart, 30),
-            status: "booked",
-          },
-        }));
-
-        setNotice("Lead marked as booked. You can create the appointment below.");
-      }
-
-      if (kind === "not_interested") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "Not interested",
-            notes,
-          });
-        }
-
-        await updateLead(selectedLeadId, {
-          pipelineStatus: "not_interested",
-        });
-
-        setNotice("Lead marked as not interested.");
-      }
-
-      if (kind === "completed") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "Visit completed",
-            notes,
-          });
-        }
-
-        await updateLead(selectedLeadId, {
-          pipelineStatus: "completed",
-        });
-
-        setNotice("Lead marked as completed.");
-      }
-
-      if (kind === "no_show") {
-        if (currentPendingFollowup) {
-          await updateFollowupStatus(currentPendingFollowup.id, {
-            status: "done",
-            outcome: "Patient no-show",
-            notes,
-          });
-        }
-
-        await updateLead(selectedLeadId, {
-          pipelineStatus: "no_show",
-        });
-
-        setNotice("Lead marked as no show.");
-      }
-
-      await loadLeadsPage();
-      await loadLeadDrawer(selectedLeadId);
-    } catch (err) {
-      setError(err.message || "Could not save lead outcome.");
+      setError(err.message || "Could not update lead summary.");
     } finally {
       setBusyKey("");
     }
   }
 
   const selectedLeadAssignee = drawer.lead ? getAssigneeLabel(drawer.lead) : "—";
+  const selectedLeadIsMine =
+    Number(drawer.lead?.assignedToUserId) === Number(user?.id);
+  const canToggleSelectedLeadAssignment =
+    Boolean(drawer.lead) && (selectedLeadIsMine || !drawer.lead.assignedToUserId);
+  const selectedLeadStatus =
+    drawer.isEditingLeadSummary
+      ? drawer.pipelineStatus
+      : drawer.lead?.pipelineStatus || "new";
+
   const showingFrom = filteredLeads.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(page * PAGE_SIZE, filteredLeads.length);
-
-  const currentPendingFollowup = useMemo(() => {
-    return drawer.followups.find((item) => item.status === "pending") || null;
-  }, [drawer.followups]);
 
   return (
     <div className="stack">
       <div className="page-header">
         <h1>Leads</h1>
         <p className="muted">
-          This is the receptionist workbench. You can search leads, manage status,
-          assign yourself, schedule follow-ups, and book appointments without leaving the page.
+          This is the main lead workspace. Search leads, manage ownership, update
+          pipeline, and maintain lead details from one place.
         </p>
       </div>
 
@@ -663,17 +369,57 @@ export default function LeadsPage() {
         </div>
       )}
 
-      <section className="page-card">
+      <section className="page-card leads-summary-card">
         <div className="section-heading">
           <div>
-            <h2>Lead filters</h2>
-            <p className="muted">Use backend filters first, then local assignment scope and pagination.</p>
+            <h2>Lead overview</h2>
+            <p className="muted">
+              Quick view of the lead book before you drill into the list.
+            </p>
           </div>
 
           <div className="record-actions">
             <Link href="/leads/new" className="primary-button">
               Create lead
             </Link>
+          </div>
+        </div>
+
+        <div className="leads-summary-grid">
+          <article className="lead-summary-tile">
+            <span className="lead-summary-label">Active leads</span>
+            <strong>{leads.length}</strong>
+          </article>
+
+          <article className="lead-summary-tile">
+            <span className="lead-summary-label">My leads</span>
+            <strong>{myLeadCount}</strong>
+          </article>
+
+          <article className="lead-summary-tile">
+            <span className="lead-summary-label">Unassigned</span>
+            <strong>{unassignedLeadCount}</strong>
+          </article>
+
+          <article className="lead-summary-tile">
+            <span className="lead-summary-label">Booked</span>
+            <strong>{bookedLeadCount}</strong>
+          </article>
+
+          <article className="lead-summary-tile">
+            <span className="lead-summary-label">Overdue next follow-up</span>
+            <strong>{overdueLeadCount}</strong>
+          </article>
+        </div>
+      </section>
+
+      <section className="page-card">
+        <div className="section-heading">
+          <div>
+            <h2>Lead filters</h2>
+            <p className="muted">
+              Use backend filters first, then local assignment scope and pagination.
+            </p>
           </div>
         </div>
 
@@ -785,7 +531,7 @@ export default function LeadsPage() {
             </p>
           </div>
 
-          <div className="record-actions">
+          <div className="record-actions lead-scope-actions">
             <button
               type="button"
               className="secondary-button"
@@ -853,7 +599,11 @@ export default function LeadsPage() {
                         <td>{getAssigneeLabel(lead)}</td>
                         <td>{lead.phone}</td>
                         <td>{lead.source}</td>
-                        <td>{lead.nextFollowupAt ? formatDateTime(lead.nextFollowupAt) : "Not scheduled"}</td>
+                        <td>
+                          {lead.nextFollowupAt
+                            ? formatDateTime(lead.nextFollowupAt)
+                            : "Not scheduled"}
+                        </td>
 
                         <td>
                           <div className="record-actions">
@@ -918,17 +668,18 @@ export default function LeadsPage() {
       {selectedLeadId && (
         <div className="drawer-backdrop" onClick={closeLeadDrawer}>
           <aside
-            className="drawer-panel"
+            className="drawer-panel lead-work-drawer"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="drawer-header">
-              <div>
-                <h2>{drawer.lead?.patientName || "Lead details"}</h2>
-                <p className="muted">
-                  {drawer.lead
-                    ? `${drawer.lead.phone} • ${selectedLeadAssignee}`
-                    : "Loading details…"}
-                </p>
+            <div className="drawer-header lead-work-drawer-header">
+              <div className="lead-drawer-header-main">
+                <div className="lead-drawer-avatar">
+                  {getLeadInitials(drawer.lead?.patientName)}
+                </div>
+
+                <div className="lead-drawer-header-copy">
+                  <h2>{drawer.lead?.patientName || "Lead details"}</h2>
+                </div>
               </div>
 
               <button
@@ -943,441 +694,195 @@ export default function LeadsPage() {
             {drawer.isLoading || !drawer.lead ? (
               <p className="muted">Loading lead details…</p>
             ) : (
-              <div className="stack">
-                <section className="page-card drawer-card">
+              <div className="stack lead-drawer-stack">
+                <section className="page-card drawer-card lead-drawer-card">
                   <div className="section-heading">
                     <div>
-                      <h3>Lead overview</h3>
-                      <p className="muted">Basic lead profile you can correct from the front desk.</p>
-                    </div>
-
-                    <StatusPill status={drawer.lead.pipelineStatus} />
-                  </div>
-
-                  <div className="form-grid">
-                    <div className="field">
-                      <label>Patient name</label>
-                      <input
-                        type="text"
-                        value={drawer.leadForm.patientName}
-                        onChange={(event) => updateLeadForm("patientName", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Phone</label>
-                      <input
-                        type="text"
-                        value={drawer.leadForm.phone}
-                        onChange={(event) => updateLeadForm("phone", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Email</label>
-                      <input
-                        type="email"
-                        value={drawer.leadForm.email}
-                        onChange={(event) => updateLeadForm("email", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Source</label>
-                      <input
-                        type="text"
-                        value={drawer.leadForm.source}
-                        onChange={(event) => updateLeadForm("source", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Service requested</label>
-                      <input
-                        type="text"
-                        value={drawer.leadForm.serviceRequested}
-                        onChange={(event) =>
-                          updateLeadForm("serviceRequested", event.target.value)
-                        }
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Preferred appointment</label>
-                      <input
-                        type="datetime-local"
-                        value={drawer.leadForm.preferredAppointmentAt}
-                        onChange={(event) =>
-                          updateLeadForm("preferredAppointmentAt", event.target.value)
-                        }
-                      />
-                    </div>
-
-                    <div className="field field-span-2">
-                      <label>Notes</label>
-                      <textarea
-                        value={drawer.leadForm.notes}
-                        onChange={(event) => updateLeadForm("notes", event.target.value)}
-                      />
+                      <h3>Lead summary</h3>
+                      <p className="muted">
+                        All key lead details in one place. Edit only when needed.
+                      </p>
                     </div>
                   </div>
 
-                  <div className="record-actions">
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={busyKey === "drawer-save-profile"}
-                      onClick={handleSaveLeadProfile}
-                    >
-                      Save lead profile
-                    </button>
+                  <div className="lead-summary-content">
+                    {drawer.isEditingLeadSummary ? (
+                      <div className="form-grid">
+                        <div className="field">
+                          <label>Patient name</label>
+                          <input
+                            type="text"
+                            value={drawer.leadForm.patientName}
+                            onChange={(event) =>
+                              updateLeadForm("patientName", event.target.value)
+                            }
+                          />
+                        </div>
 
-                    {(Number(drawer.lead.assignedToUserId) === Number(user?.id) ||
-                      !drawer.lead.assignedToUserId) && (
+                        <div className="field">
+                          <label>Phone</label>
+                          <input
+                            type="text"
+                            value={drawer.leadForm.phone}
+                            onChange={(event) =>
+                              updateLeadForm("phone", event.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label>Email</label>
+                          <input
+                            type="email"
+                            value={drawer.leadForm.email}
+                            onChange={(event) =>
+                              updateLeadForm("email", event.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label>Source</label>
+                          <select
+                            value={drawer.leadForm.source}
+                            onChange={(event) =>
+                              updateLeadForm("source", event.target.value)
+                            }
+                          >
+                            <option value="">Select source</option>
+                            {LEAD_SOURCE_OPTIONS.map((source) => (
+                              <option key={source} value={source}>
+                                {source}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="field">
+                          <label>Service requested</label>
+                          <input
+                            type="text"
+                            value={drawer.leadForm.serviceRequested}
+                            onChange={(event) =>
+                              updateLeadForm("serviceRequested", event.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label>Pipeline status</label>
+                          <select
+                            value={drawer.pipelineStatus}
+                            onChange={(event) =>
+                              setDrawer((current) => ({
+                                ...current,
+                                pipelineStatus: event.target.value,
+                              }))
+                            }
+                          >
+                            {leadPipelineOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {status.replaceAll("_", " ")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="field field-span-2">
+                          <label>Notes</label>
+                          <textarea
+                            value={drawer.leadForm.notes}
+                            onChange={(event) =>
+                              updateLeadForm("notes", event.target.value)
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="lead-summary-grid">
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Status</span>
+                            <div>
+                              <StatusPill status={selectedLeadStatus} />
+                            </div>
+                          </div>
+
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Assignee</span>
+                            <strong>{selectedLeadAssignee}</strong>
+                          </div>
+
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Phone</span>
+                            <strong>{drawer.lead.phone || "Not added"}</strong>
+                          </div>
+
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Email</span>
+                            <strong>{drawer.lead.email || "No email"}</strong>
+                          </div>
+
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Source</span>
+                            <strong>{drawer.lead.source || "Not added"}</strong>
+                          </div>
+
+                          <div className="lead-summary-item">
+                            <span className="lead-summary-label">Service</span>
+                            <strong>{drawer.lead.serviceRequested || "Not added"}</strong>
+                          </div>
+                        </div>
+
+                        <div className="lead-note-panel">
+                          <span className="lead-summary-label">Lead note</span>
+                          <p>{drawer.lead.notes || "No lead note added yet."}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="record-actions lead-summary-actions">
+                    {canToggleSelectedLeadAssignment && (
                       <button
                         type="button"
                         className={
-                          Number(drawer.lead.assignedToUserId) === Number(user?.id)
-                            ? "secondary-button"
-                            : "primary-button"
+                          selectedLeadIsMine ? "secondary-button" : "primary-button"
                         }
                         disabled={busyKey === `assign-${drawer.lead.id}`}
                         onClick={() => handleAssignToggle(drawer.lead)}
                       >
-                        {Number(drawer.lead.assignedToUserId) === Number(user?.id)
-                          ? "Unassign from me"
-                          : "Pickup lead"}
+                        {selectedLeadIsMine ? "Unassign from me" : "Pickup lead"}
                       </button>
                     )}
-                  </div>
-                </section>
 
-                <section className="page-card drawer-card">
-                  <div className="section-heading">
-                    <div>
-                      <h3>Pipeline and next action</h3>
-                      <p className="muted">Move the lead through the clinic pipeline.</p>
-                    </div>
-                  </div>
+                    {drawer.isEditingLeadSummary ? (
+                      <>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={cancelEditingLeadSummary}
+                        >
+                          Cancel
+                        </button>
 
-                  <div className="record-actions">
-                    <select
-                      value={drawer.pipelineStatus}
-                      onChange={(event) =>
-                        setDrawer((current) => ({
-                          ...current,
-                          pipelineStatus: event.target.value,
-                        }))
-                      }
-                    >
-                      {leadPipelineOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status.replaceAll("_", " ")}
-                        </option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={busyKey === "drawer-save-pipeline"}
-                      onClick={handleSavePipeline}
-                    >
-                      Save pipeline
-                    </button>
-                  </div>
-
-                  <p className="muted">
-                    Current assignee: {selectedLeadAssignee} • Next follow-up:{" "}
-                    {drawer.lead.nextFollowupAt
-                      ? formatDateTime(drawer.lead.nextFollowupAt)
-                      : "Not scheduled"}
-                  </p>
-                </section>
-
-                <section className="page-card drawer-card">
-                  <div className="section-heading">
-                    <div>
-                      <h3>Quick outcome</h3>
-                      <p className="muted">
-                        Use this after a call or visit to save what happened and move
-                        the lead to the next step faster.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="form-grid">
-                    <div className="field">
-                      <label>Next follow-up time</label>
-                      <input
-                        type="datetime-local"
-                        value={drawer.outcomeForm.nextFollowupAt}
-                        onChange={(event) =>
-                          updateOutcomeForm("nextFollowupAt", event.target.value)
-                        }
-                      />
-                      <p className="muted">
-                        Use this for no answer or callback requested.
-                      </p>
-                    </div>
-
-                    <div className="field field-span-2">
-                      <label>Outcome note</label>
-                      <textarea
-                        value={drawer.outcomeForm.notes}
-                        onChange={(event) =>
-                          updateOutcomeForm("notes", event.target.value)
-                        }
-                        placeholder="What happened on the call or visit?"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="record-actions">
-                    <button
-                      type="button"
-                      className="secondary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-no_answer"}
-                      onClick={() => handleQuickOutcome("no_answer")}
-                    >
-                      No answer + next follow-up
-                    </button>
-
-                    <button
-                      type="button"
-                      className="primary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-callback_requested"}
-                      onClick={() => handleQuickOutcome("callback_requested")}
-                    >
-                      Callback requested
-                    </button>
-
-                    <button
-                      type="button"
-                      className="primary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-booked"}
-                      onClick={() => handleQuickOutcome("booked")}
-                    >
-                      Mark booked
-                    </button>
-
-                    <button
-                      type="button"
-                      className="secondary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-not_interested"}
-                      onClick={() => handleQuickOutcome("not_interested")}
-                    >
-                      Not interested
-                    </button>
-
-                    <button
-                      type="button"
-                      className="secondary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-completed"}
-                      onClick={() => handleQuickOutcome("completed")}
-                    >
-                      Visit completed
-                    </button>
-
-                    <button
-                      type="button"
-                      className="secondary-button compact-button"
-                      disabled={busyKey === "drawer-outcome-no_show"}
-                      onClick={() => handleQuickOutcome("no_show")}
-                    >
-                      No show
-                    </button>
-                  </div>
-
-                  <p className="muted">
-                    {currentPendingFollowup
-                      ? `Current open follow-up: ${formatDateTime(currentPendingFollowup.dueAt)}`
-                      : "No open follow-up right now. You can still save an outcome and set the next step."}
-                  </p>
-                </section>
-
-                <section className="page-card drawer-card">
-                  <div className="section-heading">
-                    <div>
-                      <h3>Follow-ups</h3>
-                      <p className="muted">Create the next callback task and close old ones.</p>
-                    </div>
-                  </div>
-
-                  <div className="form-grid">
-                    <div className="field">
-                      <label>Due at</label>
-                      <input
-                        type="datetime-local"
-                        value={drawer.followupForm.dueAt}
-                        onChange={(event) => updateFollowupForm("dueAt", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field field-span-2">
-                      <label>Notes</label>
-                      <textarea
-                        value={drawer.followupForm.notes}
-                        onChange={(event) => updateFollowupForm("notes", event.target.value)}
-                        placeholder="What should happen on this follow-up?"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="record-actions">
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={busyKey === "drawer-create-followup"}
-                      onClick={handleCreateFollowup}
-                    >
-                      Create follow-up
-                    </button>
-                  </div>
-
-                  <div className="records-list">
-                    {drawer.followups.length === 0 ? (
-                      <div className="empty-state">No follow-ups for this lead yet.</div>
+                        <button
+                          type="button"
+                          className="primary-button"
+                          disabled={busyKey === "drawer-save-summary"}
+                          onClick={handleSaveLeadSummary}
+                        >
+                          Save summary
+                        </button>
+                      </>
                     ) : (
-                      drawer.followups.map((followup) => (
-                        <article key={followup.id} className="record-card">
-                          <div className="record-main">
-                            <div className="record-title-row">
-                              <h3>{formatDateTime(followup.dueAt)}</h3>
-                              <StatusPill status={followup.status} />
-                            </div>
-
-                            <p className="muted">
-                              {followup.notes || "No follow-up note added yet."}
-                            </p>
-
-                            {followup.outcome && (
-                              <p className="muted">Outcome: {followup.outcome}</p>
-                            )}
-                          </div>
-
-                          {followup.status === "pending" && (
-                            <div className="record-actions">
-                              <button
-                                type="button"
-                                className="primary-button compact-button"
-                                disabled={busyKey === `drawer-followup-${followup.id}`}
-                                onClick={() => handleFollowupStatus(followup.id, "done")}
-                              >
-                                Mark done
-                              </button>
-
-                              <button
-                                type="button"
-                                className="secondary-button compact-button"
-                                disabled={busyKey === `drawer-followup-${followup.id}`}
-                                onClick={() => handleFollowupStatus(followup.id, "skipped")}
-                              >
-                                Skip
-                              </button>
-                            </div>
-                          )}
-                        </article>
-                      ))
-                    )}
-                  </div>
-                </section>
-
-                <section className="page-card drawer-card">
-                  <div className="section-heading">
-                    <div>
-                      <h3>Appointments</h3>
-                      <p className="muted">Book the visit directly from the lead.</p>
-                    </div>
-                  </div>
-
-                  <div className="form-grid">
-                    <div className="field">
-                      <label>Start time</label>
-                      <input
-                        type="datetime-local"
-                        value={drawer.appointmentForm.startTime}
-                        onChange={(event) => {
-                          const startTime = event.target.value;
-
-                          updateAppointmentForm("startTime", startTime);
-
-                          if (!drawer.appointmentForm.endTime) {
-                            updateAppointmentForm(
-                              "endTime",
-                              addMinutesToLocalInput(startTime, 30)
-                            );
-                          }
-                        }}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>End time</label>
-                      <input
-                        type="datetime-local"
-                        value={drawer.appointmentForm.endTime}
-                        onChange={(event) => updateAppointmentForm("endTime", event.target.value)}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label>Status</label>
-                      <select
-                        value={drawer.appointmentForm.status}
-                        onChange={(event) => updateAppointmentForm("status", event.target.value)}
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={startEditingLeadSummary}
                       >
-                        {appointmentStatusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {status.replaceAll("_", " ")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="field field-span-2">
-                      <label>Notes</label>
-                      <textarea
-                        value={drawer.appointmentForm.notes}
-                        onChange={(event) => updateAppointmentForm("notes", event.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="record-actions">
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={busyKey === "drawer-create-appointment"}
-                      onClick={handleCreateAppointment}
-                    >
-                      Create appointment
-                    </button>
-                  </div>
-
-                  <div className="records-list">
-                    {drawer.appointments.length === 0 ? (
-                      <div className="empty-state">No appointments for this lead yet.</div>
-                    ) : (
-                      drawer.appointments.map((appointment) => (
-                        <article key={appointment.id} className="record-card">
-                          <div className="record-main">
-                            <div className="record-title-row">
-                              <h3>{formatDateTime(appointment.startTime)}</h3>
-                              <StatusPill status={appointment.status} />
-                            </div>
-
-                            <div className="record-meta">
-                              <span>Ends: {formatDateTime(appointment.endTime)}</span>
-                              <span>Created by user #{appointment.createdByUserId}</span>
-                            </div>
-
-                            <p className="muted">
-                              {appointment.notes || "No appointment note added yet."}
-                            </p>
-                          </div>
-                        </article>
-                      ))
+                        Edit
+                      </button>
                     )}
                   </div>
                 </section>
@@ -1386,6 +891,167 @@ export default function LeadsPage() {
           </aside>
         </div>
       )}
+
+      <style jsx global>{`
+        .leads-summary-card {
+          padding-bottom: 18px;
+        }
+
+        .leads-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .lead-summary-tile {
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+          background: var(--surface-soft, rgba(92, 118, 168, 0.05));
+          border-radius: 16px;
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .lead-summary-tile strong {
+          font-size: 24px;
+          line-height: 1;
+        }
+
+        .lead-summary-label {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          color: var(--muted, #66758b);
+          font-weight: 700;
+        }
+
+        .lead-scope-actions {
+          flex-wrap: wrap;
+        }
+
+        .lead-work-drawer {
+          width: min(920px, calc(100vw - 24px));
+          max-width: 920px;
+        }
+
+        .lead-work-drawer-header {
+          align-items: center;
+          gap: 16px;
+        }
+
+        .lead-drawer-header-main {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .lead-drawer-avatar {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          flex-shrink: 0;
+          display: grid;
+          place-items: center;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          color: var(--text-soft, #2e3b4e);
+          background: var(--surface-soft, rgba(92, 118, 168, 0.08));
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+        }
+
+        .lead-drawer-header-copy {
+          min-width: 0;
+        }
+
+        .lead-drawer-header-copy h2 {
+          margin: 0;
+        }
+
+        .lead-drawer-stack {
+          gap: 16px;
+        }
+
+        .lead-drawer-card {
+          padding: 18px;
+          border-radius: 18px;
+        }
+
+        .lead-summary-content {
+          margin-top: 16px;
+        }
+
+        .lead-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .lead-summary-item {
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+          background: var(--surface-soft, rgba(92, 118, 168, 0.06));
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .lead-note-panel {
+          margin-top: 14px;
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+          background: var(--surface-soft, rgba(92, 118, 168, 0.04));
+          border-radius: 14px;
+          padding: 14px;
+        }
+
+        .lead-note-panel p {
+          margin: 8px 0 0;
+          white-space: pre-wrap;
+        }
+
+        .lead-summary-actions {
+          margin-top: 16px;
+          padding-top: 4px;
+          flex-wrap: wrap;
+        }
+
+        @media (min-width: 821px) {
+          .lead-summary-actions {
+            justify-content: flex-end;
+          }
+        }
+
+        @media (max-width: 820px) {
+          .lead-summary-actions {
+            justify-content: flex-start;
+          }
+        }
+
+        @media (max-width: 1100px) {
+          .leads-summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .lead-work-drawer {
+            width: min(100vw - 20px, 100%);
+          }
+        }
+
+        @media (max-width: 820px) {
+          .leads-summary-grid,
+          .lead-summary-grid,
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .lead-work-drawer-header {
+            align-items: flex-start;
+          }
+        }
+      `}</style>
     </div>
   );
 }
