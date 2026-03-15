@@ -12,12 +12,17 @@ const themeScript = `
   try {
     const STORAGE_KEY = "clinicgs-theme";
     const savedTheme = localStorage.getItem(STORAGE_KEY) || "system";
-    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
     const resolvedTheme = savedTheme === "system" ? systemTheme : savedTheme;
+
     document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.dataset.themePreference = savedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
   } catch (error) {
     document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.themePreference = "system";
     document.documentElement.style.colorScheme = "dark";
   }
 })();
@@ -30,7 +35,7 @@ export default function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
 
-      <body>
+      <body className="app-body">
         <ThemeProvider>
           <SessionProvider>{children}</SessionProvider>
         </ThemeProvider>

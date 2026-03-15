@@ -38,10 +38,14 @@ export default function ProtectedShell({ children }) {
   }, [user]);
 
   async function handleLogout() {
-    setIsLoggingOut(true);
-    await logout();
-    router.replace("/login");
-    router.refresh();
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      router.replace("/login");
+      router.refresh();
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   if (isBootstrapping) {
@@ -49,7 +53,9 @@ export default function ProtectedShell({ children }) {
       <div className="loading-screen">
         <div className="page-card premium-panel">
           <h2>Loading your session…</h2>
-          <p className="muted">Checking who is logged in and which clinic they belong to.</p>
+          <p className="muted">
+            Checking who is logged in and which clinic they belong to.
+          </p>
         </div>
       </div>
     );
@@ -67,9 +73,11 @@ export default function ProtectedShell({ children }) {
 
           <div>
             <div className="sidebar-title">Clinic GS</div>
-            <div className="sidebar-subtitle">Clinic-side workspace</div>
+            <div className="sidebar-subtitle">Clinic growth system</div>
           </div>
         </div>
+
+        <div className="sidebar-section-label">Workspace</div>
 
         <nav className="nav-list">
           {navItems.map((item) => {
@@ -86,21 +94,30 @@ export default function ProtectedShell({ children }) {
             );
           })}
         </nav>
+
+        <div className="sidebar-footer page-card soft-card premium-panel">
+          <span className="eyebrow">Signed in</span>
+          <strong>{user.clinicName ? user.clinicName : "Clinic workspace"}</strong>
+          <p className="muted sidebar-footer-copy">
+            {getRoleLabel(user.role)} access for clinic-side workflows.
+          </p>
+        </div>
       </aside>
 
       <div className="shell-main">
         <header className="topbar">
-          <div>
+          <div className="topbar-copy">
+            <span className="eyebrow">Clinic-side workspace</span>
             <div className="topbar-title">Clinic GS</div>
             <div className="topbar-subtitle">
               {user.clinicName ? user.clinicName : "Clinic workspace"}
             </div>
           </div>
 
-          <div className="topbar-actions">
+          <div className="topbar-right">
             <ThemeToggle compact />
 
-            <div className="user-chip premium-panel">
+            <div className="user-chip">
               <strong>{user.fullName || user.email}</strong>
               <span className="muted">{getRoleLabel(user.role)}</span>
             </div>
