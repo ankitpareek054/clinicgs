@@ -899,6 +899,67 @@ textarea {
   color: #4b5563;
 }
 
+html[data-theme="dark"] .status-pill {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme="dark"] .status-pill.new,
+html[data-theme="dark"] .status-pill.pending {
+  background: rgba(96, 165, 250, 0.16);
+  border-color: rgba(96, 165, 250, 0.34);
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .status-pill.contacted {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fcd34d;
+}
+
+html[data-theme="dark"] .status-pill.booked,
+html[data-theme="dark"] .status-pill.done {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.34);
+  color: #6ee7b7;
+}
+
+html[data-theme="dark"] .status-pill.rescheduled {
+  background: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.34);
+  color: #c4b5fd;
+}
+
+html[data-theme="dark"] .status-pill.completed {
+  background: rgba(129, 140, 248, 0.16);
+  border-color: rgba(129, 140, 248, 0.34);
+  color: #a5b4fc;
+}
+
+html[data-theme="dark"] .status-pill.review-pending {
+  background: rgba(45, 212, 191, 0.16);
+  border-color: rgba(45, 212, 191, 0.34);
+  color: #5eead4;
+}
+
+html[data-theme="dark"] .status-pill.no-show {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] .status-pill.not-interested,
+html[data-theme="dark"] .status-pill.skipped {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .status-pill.cancelled {
+  background: rgba(100, 116, 139, 0.14);
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #e2e8f0;
+}
+
 .data-table-wrap {
   overflow-x: auto;
   margin-top: 8px;
