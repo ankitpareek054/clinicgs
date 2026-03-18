@@ -3,7 +3,7 @@ const express = require('express');
 const systemRoutesImport = require('../modules/system/system.routes');
 const authRoutesImport = require('../modules/auth/auth.routes');
 const clinicsRoutesImport = require('../modules/clinics/clinics.routes');
-//const clinicSettingsRoutesImport = require('../modules/clinic-settings/clinic-settings.routes');
+const clinicSettingsRoutesImport = require('../modules/clinic-settings/clinic-settings.routes');
 const clinicIntegrationsRoutesImport = require('../modules/clinic-integrations/clinic-integrations.routes');
 const clinicServicesRoutesImport = require('../modules/clinic-services/clinic-services.routes');
 const usersRoutesImport = require('../modules/users/users.routes');
@@ -21,10 +21,7 @@ const dashboardsRoutesImport = require('../modules/dashboards/dashboards.routes'
 const router = express.Router();
 
 function resolveRouter(label, routeModule) {
-  const resolved =
-    routeModule?.default ||
-    routeModule?.router ||
-    routeModule;
+  const resolved = routeModule?.default || routeModule?.router || routeModule;
 
   const isRouterLike =
     typeof resolved === 'function' &&
@@ -49,25 +46,40 @@ function resolveRouter(label, routeModule) {
 const systemRoutes = resolveRouter('system', systemRoutesImport);
 const authRoutes = resolveRouter('auth', authRoutesImport);
 const clinicsRoutes = resolveRouter('clinics', clinicsRoutesImport);
-//const clinicSettingsRoutes = resolveRouter('clinic-settings', clinicSettingsRoutesImport);
-const clinicIntegrationsRoutes = resolveRouter('clinic-integrations', clinicIntegrationsRoutesImport);
-const clinicServicesRoutes = resolveRouter('clinic-services', clinicServicesRoutesImport);
+const clinicSettingsRoutes = resolveRouter('clinic-settings', clinicSettingsRoutesImport);
+const clinicIntegrationsRoutes = resolveRouter(
+  'clinic-integrations',
+  clinicIntegrationsRoutesImport
+);
+const clinicServicesRoutes = resolveRouter(
+  'clinic-services',
+  clinicServicesRoutesImport
+);
 const usersRoutes = resolveRouter('users', usersRoutesImport);
-const staffRequestsRoutes = resolveRouter('staff-requests', staffRequestsRoutesImport);
+const staffRequestsRoutes = resolveRouter(
+  'staff-requests',
+  staffRequestsRoutesImport
+);
 const leadsRoutes = resolveRouter('leads', leadsRoutesImport);
 const followupsRoutes = resolveRouter('followups', followupsRoutesImport);
 const appointmentsRoutes = resolveRouter('appointments', appointmentsRoutesImport);
 const publicFormsRoutes = resolveRouter('public-forms', publicFormsRoutesImport);
 const reviewsRoutes = resolveRouter('reviews', reviewsRoutesImport);
 const messagesRoutes = resolveRouter('messages', messagesRoutesImport);
-const supportTicketsRoutes = resolveRouter('support-tickets', supportTicketsRoutesImport);
-const notificationsRoutes = resolveRouter('notifications', notificationsRoutesImport);
+const supportTicketsRoutes = resolveRouter(
+  'support-tickets',
+  supportTicketsRoutesImport
+);
+const notificationsRoutes = resolveRouter(
+  'notifications',
+  notificationsRoutesImport
+);
 const dashboardsRoutes = resolveRouter('dashboards', dashboardsRoutesImport);
 
 router.use('/system', systemRoutes);
 router.use('/auth', authRoutes);
 router.use('/clinics', clinicsRoutes);
-//router.use('/clinic-settings', clinicSettingsRoutes);
+router.use('/clinic-settings', clinicSettingsRoutes);
 router.use('/clinic-integrations', clinicIntegrationsRoutes);
 router.use('/clinic-services', clinicServicesRoutes);
 router.use('/users', usersRoutes);

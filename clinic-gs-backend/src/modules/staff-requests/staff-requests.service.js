@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+
 const { withTransaction } = require('../../db/transaction');
 const ApiError = require('../../utils/api-error');
 const env = require('../../config/env');
@@ -45,6 +46,38 @@ async function listRequests(filters, currentUser) {
   return rows.map(mapRequest);
 }
 
+async function validateRemovalTarget(input, currentUser, expectedRole) {
+  const targetUser = await staffRequestsRepository.findUserById(input.targetUserId);
+
+  if (!targetUser) {
+    throw new ApiError(404, 'Target user not found.', { code: 'USER_NOT_FOUND' });
+  }
+
+  if (Number(targetUser.clinic_id) !== Number(currentUser.clinicId)) {
+    throw new ApiError(403, 'Forbidden.', { code: 'FORBIDDEN' });
+  }
+
+  if (targetUser.role !== expectedRole) {
+    throw new ApiError(400, `Target user must be a ${expectedRole}.`, {
+      code: 'INVALID_TARGET_ROLE',
+    });
+  }
+
+  if (targetUser.status !== 'active') {
+    throw new ApiError(400, 'Only active users can be removed through this request flow.', {
+      code: 'INVALID_TARGET_STATUS',
+    });
+  }
+
+  if (expectedRole === ROLES.OWNER && Number(targetUser.id) === Number(currentUser.id)) {
+    throw new ApiError(400, 'Owner cannot create a remove_owner request for themselves.', {
+      code: 'SELF_REMOVAL_NOT_ALLOWED',
+    });
+  }
+
+  return targetUser;
+}
+
 async function createRequest(input, currentUser) {
   if (currentUser.role !== ROLES.OWNER) {
     throw new ApiError(403, 'Only owners can create staff requests.', {
@@ -52,22 +85,14 @@ async function createRequest(input, currentUser) {
     });
   }
 
+  let targetUser = null;
+
   if (input.requestType === 'remove_owner') {
-    const targetUser = await staffRequestsRepository.findUserById(input.targetUserId);
+    targetUser = await validateRemovalTarget(input, currentUser, ROLES.OWNER);
+  }
 
-    if (!targetUser) {
-      throw new ApiError(404, 'Target owner not found.', { code: 'USER_NOT_FOUND' });
-    }
-
-    if (Number(targetUser.clinic_id) !== Number(currentUser.clinicId)) {
-      throw new ApiError(403, 'Forbidden.', { code: 'FORBIDDEN' });
-    }
-
-    if (targetUser.role !== ROLES.OWNER) {
-      throw new ApiError(400, 'remove_owner request must target an owner.', {
-        code: 'INVALID_TARGET_ROLE',
-      });
-    }
+  if (input.requestType === 'remove_receptionist') {
+    targetUser = await validateRemovalTarget(input, currentUser, ROLES.RECEPTIONIST);
   }
 
   const created = await staffRequestsRepository.createRequest({
@@ -75,16 +100,17 @@ async function createRequest(input, currentUser) {
     requestedByUserId: currentUser.id,
     requestType: input.requestType,
     targetUserId: input.targetUserId || null,
-    targetName: input.targetName,
-    targetEmail: input.targetEmail || null,
-    targetPhone: input.targetPhone || null,
+    targetName: targetUser?.full_name || input.targetName,
+    targetEmail: targetUser?.email || input.targetEmail || null,
+    targetPhone: targetUser?.phone || input.targetPhone || null,
     targetRole:
       input.targetRole ||
-      (input.requestType === 'add_receptionist'
-        ? 'receptionist'
-        : input.requestType === 'add_owner'
-          ? 'owner'
-          : 'owner'),
+      (
+        input.requestType === 'add_receptionist' ||
+        input.requestType === 'remove_receptionist'
+          ? 'receptionist'
+          : 'owner'
+      ),
     requestNote: input.requestNote || null,
   });
 
@@ -198,30 +224,45 @@ async function decideRequest(requestId, input, currentUser) {
         };
       }
 
-      if (request.request_type === 'remove_owner') {
+      if (
+        request.request_type === 'remove_owner' ||
+        request.request_type === 'remove_receptionist'
+      ) {
         if (!request.target_user_id) {
-          throw new ApiError(400, 'Target owner is required for remove_owner request.', {
+          throw new ApiError(400, 'Target user is required for removal request.', {
             code: 'MISSING_TARGET_USER',
           });
         }
 
-        const targetUser = await staffRequestsRepository.findUserById(request.target_user_id, client);
+        const targetUser = await staffRequestsRepository.findUserById(
+          request.target_user_id,
+          client
+        );
 
         if (!targetUser) {
-          throw new ApiError(404, 'Target owner not found.', { code: 'USER_NOT_FOUND' });
+          throw new ApiError(404, 'Target user not found.', {
+            code: 'USER_NOT_FOUND',
+          });
         }
 
-        if (targetUser.role !== ROLES.OWNER) {
-          throw new ApiError(400, 'Target user is not an owner.', {
+        const expectedRole =
+          request.request_type === 'remove_owner' ? ROLES.OWNER : ROLES.RECEPTIONIST;
+
+        if (targetUser.role !== expectedRole) {
+          throw new ApiError(400, 'Target user role does not match the request type.', {
             code: 'INVALID_TARGET_ROLE',
           });
         }
 
-        await staffRequestsRepository.deactivateOwnerAsRemoved(
+        await staffRequestsRepository.deactivateUserAsRemoved(
           {
             userId: targetUser.id,
             removedByUserId: currentUser.id,
-            removalReason: input.adminNote || 'Owner removal approved by super admin',
+            removalReason:
+              input.adminNote ||
+              (expectedRole === ROLES.OWNER
+                ? 'Owner removal approved by super admin'
+                : 'Receptionist removal approved by super admin'),
           },
           client
         );

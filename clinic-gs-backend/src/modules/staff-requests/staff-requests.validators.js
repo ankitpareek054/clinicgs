@@ -4,14 +4,21 @@ const requestIdParamSchema = z.object({
   requestId: z.coerce.number().int().positive(),
 });
 
+const STAFF_REQUEST_TYPES = [
+  'add_receptionist',
+  'remove_receptionist',
+  'add_owner',
+  'remove_owner',
+];
+
 const listStaffRequestsQuerySchema = z.object({
   clinicId: z.coerce.number().int().positive().optional(),
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
-  requestType: z.enum(['add_receptionist', 'add_owner', 'remove_owner']).optional(),
+  requestType: z.enum(STAFF_REQUEST_TYPES).optional(),
 });
 
 const createStaffRequestSchema = z.object({
-  requestType: z.enum(['add_receptionist', 'add_owner', 'remove_owner']),
+  requestType: z.enum(STAFF_REQUEST_TYPES),
   targetUserId: z.coerce.number().int().positive().nullable().optional(),
   targetName: z.string().trim().min(2),
   targetEmail: z.string().trim().email().nullable().optional(),
@@ -33,6 +40,24 @@ const createStaffRequestSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['targetRole'],
         message: 'targetRole must be owner for remove_owner request.',
+      });
+    }
+  }
+
+  if (data.requestType === 'remove_receptionist') {
+    if (!data.targetUserId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['targetUserId'],
+        message: 'targetUserId is required for remove_receptionist request.',
+      });
+    }
+
+    if (data.targetRole && data.targetRole !== 'receptionist') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['targetRole'],
+        message: 'targetRole must be receptionist for remove_receptionist request.',
       });
     }
   }

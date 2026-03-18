@@ -296,7 +296,7 @@ async function createInvite(input, client = null) {
   return result.rows[0];
 }
 
-async function deactivateOwnerAsRemoved(input, client = null) {
+async function deactivateUserAsRemoved(input, client = null) {
   const query = `
     UPDATE users
     SET
@@ -327,7 +327,7 @@ async function deactivateOwnerAsRemoved(input, client = null) {
     [
       input.userId,
       input.removedByUserId,
-      input.removalReason || 'Owner removal approved by super admin',
+      input.removalReason || 'Staff removal approved by super admin',
     ],
     client
   );
@@ -343,5 +343,5 @@ module.exports = {
   findUserById,
   createPendingUser,
   createInvite,
-  deactivateOwnerAsRemoved,
+  deactivateUserAsRemoved,
 };
