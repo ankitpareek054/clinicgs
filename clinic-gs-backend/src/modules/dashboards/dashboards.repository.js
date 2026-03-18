@@ -247,20 +247,26 @@ async function getClinicOverdueFollowups(clinicId, client = null) {
 async function getClinicAppointmentsSummary(clinicId, client = null) {
   const query = `
     SELECT
-      (SELECT COUNT(*)::int
-       FROM appointments
-       WHERE clinic_id = $1
-         AND start_time >= CURRENT_DATE
-         AND start_time < CURRENT_DATE + INTERVAL '1 day') AS appointments_today,
-      (SELECT COUNT(*)::int
-       FROM appointments
-       WHERE clinic_id = $1
-         AND start_time >= NOW()
-         AND status IN ('booked', 'rescheduled')) AS upcoming_appointments,
-      (SELECT COUNT(*)::int
-       FROM appointments
-       WHERE clinic_id = $1
-         AND status = 'no_show') AS no_shows
+      (
+        SELECT COUNT(*)::int
+        FROM appointments
+        WHERE clinic_id = $1
+          AND start_time >= CURRENT_DATE
+          AND start_time < CURRENT_DATE + INTERVAL '1 day'
+      ) AS appointments_today,
+      (
+        SELECT COUNT(*)::int
+        FROM appointments
+        WHERE clinic_id = $1
+          AND start_time >= NOW()
+          AND status IN ('booked', 'rescheduled')
+      ) AS upcoming_appointments,
+      (
+        SELECT COUNT(*)::int
+        FROM appointments
+        WHERE clinic_id = $1
+          AND status = 'no_show'
+      ) AS no_shows
   `;
 
   const result = await db.query(query, [clinicId], client);
@@ -308,49 +314,110 @@ async function getClinicSourceBreakdown(clinicId, client = null) {
 
 async function getClinicStaffPerformance(clinicId, client = null) {
   const query = `
+    WITH clinic_staff AS (
+      SELECT
+        u.id AS user_id,
+        u.full_name,
+        u.email::text AS email,
+        u.status
+      FROM users u
+      WHERE u.clinic_id = $1
+        AND u.role = 'receptionist'
+    ),
+    leads_created AS (
+      SELECT
+        l.created_by_user_id AS user_id,
+        COUNT(*)::int AS leads_created
+      FROM leads l
+      WHERE l.clinic_id = $1
+        AND l.created_by_user_id IS NOT NULL
+      GROUP BY l.created_by_user_id
+    ),
+    handled_leads AS (
+      SELECT
+        l.assigned_to_user_id AS user_id,
+        COUNT(*) FILTER (
+          WHERE l.visibility_status = 'active'
+        )::int AS currently_handled_leads,
+        COUNT(*) FILTER (
+          WHERE l.pipeline_status IN (
+            'contacted',
+            'booked',
+            'rescheduled',
+            'completed',
+            'review_pending',
+            'no_show'
+          )
+        )::int AS leads_contacted_or_progressed,
+        ROUND(
+          AVG(
+            CASE
+              WHEN l.first_contact_at IS NOT NULL
+                   AND l.first_contact_at >= l.created_at
+              THEN EXTRACT(EPOCH FROM (l.first_contact_at - l.created_at)) / 60.0
+              ELSE NULL
+            END
+          )::numeric,
+          2
+        ) AS avg_response_minutes,
+        COUNT(*) FILTER (
+          WHERE l.visibility_status = 'active'
+            AND l.next_followup_at IS NOT NULL
+            AND l.next_followup_at < NOW()
+        )::int AS overdue_assigned_leads,
+        COUNT(*) FILTER (
+          WHERE l.pipeline_status = 'no_show'
+        )::int AS no_show_related_handled_leads
+      FROM leads l
+      WHERE l.clinic_id = $1
+        AND l.assigned_to_user_id IS NOT NULL
+      GROUP BY l.assigned_to_user_id
+    ),
+    completed_followups AS (
+      SELECT
+        f.completed_by_user_id AS user_id,
+        COUNT(*) FILTER (
+          WHERE f.status = 'done'
+        )::int AS followups_completed
+      FROM followups f
+      WHERE f.clinic_id = $1
+        AND f.completed_by_user_id IS NOT NULL
+      GROUP BY f.completed_by_user_id
+    ),
+    booked_appointments AS (
+      SELECT
+        a.created_by_user_id AS user_id,
+        COUNT(*) FILTER (
+          WHERE a.status IN ('booked', 'rescheduled', 'completed', 'no_show', 'cancelled')
+        )::int AS appointments_booked
+      FROM appointments a
+      WHERE a.clinic_id = $1
+        AND a.created_by_user_id IS NOT NULL
+      GROUP BY a.created_by_user_id
+    )
     SELECT
-      u.id AS user_id,
-      u.full_name,
-      u.email::text AS email,
-      u.status,
-      COUNT(lc.id)::int AS leads_created,
-      COUNT(lh.id) FILTER (WHERE lh.visibility_status = 'active')::int AS currently_handled_leads,
-      COUNT(lh.id) FILTER (WHERE lh.pipeline_status IN ('contacted', 'booked', 'rescheduled', 'completed', 'review_pending', 'no_show'))::int AS leads_contacted_or_progressed,
-      COUNT(f.id) FILTER (WHERE f.status = 'done')::int AS followups_completed,
-      COUNT(a.id) FILTER (WHERE a.status IN ('booked', 'rescheduled', 'completed', 'no_show', 'cancelled'))::int AS appointments_booked,
-      ROUND(
-        AVG(
-          CASE
-            WHEN lh.first_contact_at IS NOT NULL
-            THEN EXTRACT(EPOCH FROM (lh.first_contact_at - lh.created_at)) / 60.0
-            ELSE NULL
-          END
-        )::numeric,
-        2
-      ) AS avg_response_minutes,
-      COUNT(lh.id) FILTER (
-        WHERE lh.visibility_status = 'active'
-          AND lh.next_followup_at IS NOT NULL
-          AND lh.next_followup_at < NOW()
-      )::int AS overdue_assigned_leads,
-      COUNT(lh.id) FILTER (WHERE lh.pipeline_status = 'no_show')::int AS no_show_related_handled_leads
-    FROM users u
-    LEFT JOIN leads lc
-      ON lc.created_by_user_id = u.id
-     AND lc.clinic_id = $1
-    LEFT JOIN leads lh
-      ON lh.assigned_to_user_id = u.id
-     AND lh.clinic_id = $1
-    LEFT JOIN followups f
-      ON f.completed_by_user_id = u.id
-     AND f.clinic_id = $1
-    LEFT JOIN appointments a
-      ON a.created_by_user_id = u.id
-     AND a.clinic_id = $1
-    WHERE u.clinic_id = $1
-      AND u.role = 'receptionist'
-    GROUP BY u.id, u.full_name, u.email, u.status
-    ORDER BY u.full_name ASC
+      s.user_id,
+      s.full_name,
+      s.email,
+      s.status,
+      COALESCE(lc.leads_created, 0)::int AS leads_created,
+      COALESCE(hl.currently_handled_leads, 0)::int AS currently_handled_leads,
+      COALESCE(hl.leads_contacted_or_progressed, 0)::int AS leads_contacted_or_progressed,
+      COALESCE(cf.followups_completed, 0)::int AS followups_completed,
+      COALESCE(ba.appointments_booked, 0)::int AS appointments_booked,
+      hl.avg_response_minutes,
+      COALESCE(hl.overdue_assigned_leads, 0)::int AS overdue_assigned_leads,
+      COALESCE(hl.no_show_related_handled_leads, 0)::int AS no_show_related_handled_leads
+    FROM clinic_staff s
+    LEFT JOIN leads_created lc
+      ON lc.user_id = s.user_id
+    LEFT JOIN handled_leads hl
+      ON hl.user_id = s.user_id
+    LEFT JOIN completed_followups cf
+      ON cf.user_id = s.user_id
+    LEFT JOIN booked_appointments ba
+      ON ba.user_id = s.user_id
+    ORDER BY s.full_name ASC
   `;
 
   const result = await db.query(query, [clinicId], client);
