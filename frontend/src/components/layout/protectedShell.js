@@ -16,6 +16,8 @@ const receptionistNav = [
 
 const ownerNav = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/notifications", label: "Notifications" },
+  { href: "/support", label: "Support" },
   { href: "/my-tasks", label: "My Tasks" },
   { href: "/leads", label: "Leads" },
   { href: "/appointments", label: "Appointments" },
@@ -48,6 +50,11 @@ export default function ProtectedShell({ children }) {
     } finally {
       setIsLoggingOut(false);
     }
+  }
+
+  function isNavItemActive(href) {
+    if (!pathname) return false;
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
 
   if (isBootstrapping) {
@@ -86,7 +93,7 @@ export default function ProtectedShell({ children }) {
 
         <nav className="nav-list">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = isNavItemActive(item.href);
 
             return (
               <Link
@@ -135,155 +142,153 @@ export default function ProtectedShell({ children }) {
       </div>
 
       <style jsx global>{`
-  .app-shell {
-    align-items: start;
-  }
+        .app-shell {
+          align-items: start;
+        }
 
-  .sidebar {
-    position: sticky;
-    top: 0;
-    align-self: start;
-    height: 100vh;
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
+        .sidebar {
+          position: sticky;
+          top: 0;
+          align-self: start;
+          height: 100vh;
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
 
-  .sidebar::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-    display: none;
-  }
+        .sidebar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
 
-  .shell-main {
-    min-width: 0;
-    min-height: 100vh;
-  }
+        .shell-main {
+          min-width: 0;
+          min-height: 100vh;
+        }
 
-  .nav-list {
-    margin-bottom: 20px;
-  }
+        .nav-list {
+          margin-bottom: 20px;
+        }
 
-  .signed-card {
-    gap: 0;
-    padding: 16px;
-    overflow: visible;
-   // margin-top: auto !important;
-    margin-bottom: -20px;
-    margin-left: 2px;
-    margin-right: 2px;
-    align-self: stretch;
-  }
+        .signed-card {
+          gap: 0;
+          padding: 16px;
+          overflow: visible;
+          margin-bottom: -20px;
+          margin-left: 2px;
+          margin-right: 2px;
+          align-self: stretch;
+        }
 
-  .signed-label {
-    display: block;
-    margin-bottom: 8px;
-  }
+        .signed-label {
+          display: block;
+          margin-bottom: 8px;
+        }
 
-  .signed-clinic {
-    display: block;
-    color: var(--sidebar-text, #ffffff);
-    line-height: 1.3;
-    margin-bottom: 10px;
-    word-break: break-word;
-  }
+        .signed-clinic {
+          display: block;
+          color: var(--sidebar-text, #ffffff);
+          line-height: 1.3;
+          margin-bottom: 10px;
+          word-break: break-word;
+        }
 
-  .signed-user {
-    display: block;
-    color: var(--sidebar-text, #ffffff);
-    opacity: 0.92;
-    line-height: 1.3;
-    margin-bottom: 4px;
-    word-break: break-word;
-  }
+        .signed-user {
+          display: block;
+          color: var(--sidebar-text, #ffffff);
+          opacity: 0.92;
+          line-height: 1.3;
+          margin-bottom: 4px;
+          word-break: break-word;
+        }
 
-  .signed-role {
-    display: block;
-    margin-bottom: 14px;
-  }
+        .signed-role {
+          display: block;
+          margin-bottom: 14px;
+        }
 
-  .signed-logout-button {
-    width: 100%;
-    min-height: 46px;
-    padding: 12px 16px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    //border-radius: 12px;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.08) 100%
-    );
-    color: #ffffff;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-    transition:
-      transform 0.18s ease,
-      background 0.18s ease,
-      border-color 0.18s ease,
-      box-shadow 0.18s ease;
-    cursor: pointer;
-  }
+        .signed-logout-button {
+          width: 100%;
+          min-height: 46px;
+          padding: 12px 16px;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.14) 0%,
+            rgba(255, 255, 255, 0.08) 100%
+          );
+          color: #ffffff;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+          transition:
+            transform 0.18s ease,
+            background 0.18s ease,
+            border-color 0.18s ease,
+            box-shadow 0.18s ease;
+          cursor: pointer;
+        }
 
-  .signed-logout-button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.2) 0%,
-      rgba(255, 255, 255, 0.11) 100%
-    );
-    border-color: rgba(255, 255, 255, 0.22);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-  }
+        .signed-logout-button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.2) 0%,
+            rgba(255, 255, 255, 0.11) 100%
+          );
+          border-color: rgba(255, 255, 255, 0.22);
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+        }
 
-  .signed-logout-button:disabled {
-    opacity: 0.78;
-    cursor: not-allowed;
-    transform: none;
-  }
+        .signed-logout-button:disabled {
+          opacity: 0.78;
+          cursor: not-allowed;
+          transform: none;
+        }
 
-  .topbar-clinic-only {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-  }
+        .topbar-clinic-only {
+          display: flex;
+          align-items: center;
+          min-width: 0;
+        }
 
-  .topbar-clinic-name {
-    margin: 0;
-    line-height: 1.1;
-    word-break: break-word;
-  }
+        .topbar-clinic-name {
+          margin: 0;
+          line-height: 1.1;
+          word-break: break-word;
+        }
 
-  html[data-theme="light"] .signed-logout-button {
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.1) 100%
-    );
-    color: #ffffff;
-  }
+        html[data-theme="light"] .signed-logout-button {
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.18) 0%,
+            rgba(255, 255, 255, 0.1) 100%
+          );
+          color: #ffffff;
+        }
 
-  html[data-theme="dark"] .signed-logout-button {
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.06) 100%
-    );
-    color: #ffffff;
-  }
+        html[data-theme="dark"] .signed-logout-button {
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.12) 0%,
+            rgba(255, 255, 255, 0.06) 100%
+          );
+          color: #ffffff;
+        }
 
-  .drawer-panel {
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
+        .drawer-panel {
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
 
-  .drawer-panel::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-    display: none;
-  }
-`}</style>
+        .drawer-panel::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }
