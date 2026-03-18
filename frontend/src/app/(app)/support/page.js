@@ -67,6 +67,11 @@ function getPriorityTone(priority) {
   return "support-priority-medium";
 }
 
+function canUseClinicSupport(user) {
+  if (!user) return false;
+  return user.role === "owner" || user.role === "receptionist";
+}
+
 export default function SupportPage() {
   const router = useRouter();
   const { user, isBootstrapping } = useAuth();
@@ -93,17 +98,16 @@ export default function SupportPage() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    if (!isBootstrapping && user && !isOwnerLike(user)) {
-      router.replace("/my-tasks");
+    if (!isBootstrapping && user && !canUseClinicSupport(user) && user.role !== "super_admin") {
+      router.replace(isOwnerLike(user) ? "/dashboard" : "/my-tasks");
     }
   }, [isBootstrapping, router, user]);
 
-  const showClinicOwnerOnlyPlaceholder =
-    user?.role === "super_admin" && !user?.clinicId;
+  const showSuperAdminPlaceholder = user?.role === "super_admin";
 
   const loadTickets = useCallback(
     async ({ refresh = false } = {}) => {
-      if (!user || !isOwnerLike(user) || showClinicOwnerOnlyPlaceholder) {
+      if (!user || !canUseClinicSupport(user) || showSuperAdminPlaceholder) {
         return;
       }
 
@@ -134,14 +138,14 @@ export default function SupportPage() {
         setIsRefreshing(false);
       }
     },
-    [filters.priority, filters.status, filters.ticketType, showClinicOwnerOnlyPlaceholder, user]
+    [filters.priority, filters.status, filters.ticketType, showSuperAdminPlaceholder, user]
   );
 
   useEffect(() => {
-    if (!isBootstrapping && user && isOwnerLike(user) && !showClinicOwnerOnlyPlaceholder) {
+    if (!isBootstrapping && user && canUseClinicSupport(user) && !showSuperAdminPlaceholder) {
       loadTickets();
     }
-  }, [isBootstrapping, loadTickets, showClinicOwnerOnlyPlaceholder, user]);
+  }, [isBootstrapping, loadTickets, showSuperAdminPlaceholder, user]);
 
   const ticketStats = useMemo(() => {
     return tickets.reduce(
@@ -261,37 +265,41 @@ export default function SupportPage() {
         title="Loading support"
         description="Checking your session and preparing clinic support tickets."
         points={[
-          "Verifying owner access",
-          "Loading clinic ticket history",
+          "Verifying workspace access",
+          "Loading ticket history",
           "Preparing support actions",
         ]}
       />
     );
   }
 
-  if (!user || !isOwnerLike(user)) {
+  if (!user) {
+    return null;
+  }
+
+  if (showSuperAdminPlaceholder) {
     return (
       <PagePlaceholder
-        title="Redirecting"
-        description="This support page currently belongs to the owner workspace."
+        title="Super admin support stays separate"
+        description="This page is for clinic-side owners and receptionists. Super admin ticket resolution should live in a separate admin workspace."
         points={[
-          "Receptionists stay in My Tasks",
-          "Owner pages remain clinic scoped",
-          "Current routing behavior stays intact",
+          "Clinic users create and view support tickets here",
+          "Super admin is the resolver/status handler",
+          "Admin support tooling should be built separately",
         ]}
       />
     );
   }
 
-  if (showClinicOwnerOnlyPlaceholder) {
+  if (!canUseClinicSupport(user)) {
     return (
       <PagePlaceholder
-        title="Clinic support is owner-specific"
-        description="This page is for a clinic-scoped owner workspace. Super admin support workflows should stay separate."
+        title="Redirecting"
+        description="This support page is only available to clinic-side users."
         points={[
-          "Owner support is clinic scoped",
-          "Super admin support remains platform scoped",
-          "This prevents owner/admin workflow mixing",
+          "Owners can see clinic-wide tickets",
+          "Receptionists see the tickets they created",
+          "Platform-side workflows stay separate",
         ]}
       />
     );
@@ -302,10 +310,13 @@ export default function SupportPage() {
       <header className="page-header">
         <div className="support-header-row">
           <div className="stack-sm">
-            <span className="small-label">Owner workspace</span>
+            <span className="small-label">
+              {user.role === "owner" ? "Owner workspace" : "Receptionist workspace"}
+            </span>
             <h1>Support</h1>
             <p className="support-subtle">
-              Create and manage clinic support tickets without leaving the owner workspace.
+              Create tickets for bugs, data issues, and workflow blockers. Owners see clinic-wide
+              tickets, while receptionists see the tickets they created.
             </p>
           </div>
 
@@ -341,25 +352,33 @@ export default function SupportPage() {
         <article className="metric-card">
           <span className="small-label">Loaded</span>
           <strong>{ticketStats.total}</strong>
-          <p className="support-subtle">Tickets in the current filtered view.</p>
+          <p className="support-subtle">
+            Tickets in the current filtered view.
+          </p>
         </article>
 
         <article className="metric-card">
           <span className="small-label">Open</span>
           <strong>{ticketStats.open}</strong>
-          <p className="support-subtle">Fresh tickets waiting for action.</p>
+          <p className="support-subtle">
+            Fresh tickets waiting for action.
+          </p>
         </article>
 
         <article className="metric-card">
           <span className="small-label">In progress</span>
           <strong>{ticketStats.inProgress}</strong>
-          <p className="support-subtle">Tickets actively being worked on.</p>
+          <p className="support-subtle">
+            Tickets actively being worked on.
+          </p>
         </article>
 
         <article className="metric-card">
           <span className="small-label">Resolved / Closed</span>
           <strong>{ticketStats.resolved + ticketStats.closed}</strong>
-          <p className="support-subtle">Tickets that are no longer active.</p>
+          <p className="support-subtle">
+            Tickets that are no longer active.
+          </p>
         </article>
       </section>
 
@@ -368,7 +387,7 @@ export default function SupportPage() {
           <div className="stack-sm">
             <span className="small-label">Create support ticket</span>
             <p className="support-subtle">
-              Use this for bugs, data issues, feature requests, or workflow blockers.
+              Use this for bugs, feature requests, data issues, or workflow blockers.
             </p>
           </div>
 

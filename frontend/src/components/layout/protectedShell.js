@@ -9,6 +9,7 @@ import ThemeToggle from "../shared/themeToggle";
 
 const receptionistNav = [
   { href: "/my-tasks", label: "My Tasks" },
+  { href: "/support", label: "Support" },
   { href: "/leads", label: "Leads" },
   { href: "/appointments", label: "Appointments" },
   { href: "/followups", label: "Follow Ups" },
