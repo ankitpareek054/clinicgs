@@ -87,7 +87,7 @@ async function listDuplicateWarnings(req, res) {
   const data = await leadsService.listDuplicateWarnings(req.query, req.user);
 
   return sendSuccess(res, {
-    message: 'Duplicate warnings fetched successfully.',
+    message: 'Duplicate review groups fetched successfully.',
     data,
   });
 }

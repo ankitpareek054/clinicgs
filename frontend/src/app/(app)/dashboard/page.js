@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PagePlaceholder from "../../../components/shared/pagePlaceHolder";
@@ -173,9 +174,7 @@ function getPercent(count, total) {
 }
 
 function getStaffStatusTone(status) {
-  const normalized = String(status || "")
-    .trim()
-    .toLowerCase();
+  const normalized = String(status || "").trim().toLowerCase();
 
   if (["active", "approved"].includes(normalized)) {
     return "done";
@@ -192,7 +191,14 @@ function getStaffStatusTone(status) {
   return "pending";
 }
 
-function BreakdownSection({ title, description, items, total, labelKey, emptyText }) {
+function BreakdownSection({
+  title,
+  description,
+  items,
+  total,
+  labelKey,
+  emptyText,
+}) {
   return (
     <section className="page-card stack">
       <div style={sectionHeaderStyle}>
@@ -215,6 +221,7 @@ function BreakdownSection({ title, description, items, total, labelKey, emptyTex
                   <strong>{label}</strong>
                   <span className="small-label">{getPercent(count, total)}</span>
                 </div>
+
                 <div className="stack-sm">
                   <strong style={{ fontSize: "1.85rem", lineHeight: 1 }}>
                     {formatCount(count)}
@@ -286,7 +293,12 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    if (!isBootstrapping && user && isOwnerLike(user) && !showClinicOwnerOnlyPlaceholder) {
+    if (
+      !isBootstrapping &&
+      user &&
+      isOwnerLike(user) &&
+      !showClinicOwnerOnlyPlaceholder
+    ) {
       loadDashboard();
     }
   }, [isBootstrapping, loadDashboard, showClinicOwnerOnlyPlaceholder, user]);
@@ -294,10 +306,21 @@ export default function DashboardPage() {
   const summaryCards = useMemo(() => {
     const summary = dashboard?.summary || {};
 
-    return SUMMARY_METRICS.map((metric) => ({
-      ...metric,
-      value: summary?.[metric.key],
-    }));
+    return SUMMARY_METRICS.map((metric) => {
+      const value = summary?.[metric.key];
+      const isDuplicateMetric = metric.key === "duplicateWarnings";
+
+      return {
+        ...metric,
+        value,
+        href: isDuplicateMetric ? "/leads/duplicates" : null,
+        actionLabel: isDuplicateMetric
+          ? toNumber(value) > 0
+            ? "Review duplicates"
+            : "Open review page"
+          : null,
+      };
+    });
   }, [dashboard]);
 
   const pipelineDistribution = useMemo(() => {
@@ -327,11 +350,17 @@ export default function DashboardPage() {
   }, [dashboard]);
 
   const pipelineTotal = useMemo(() => {
-    return pipelineDistribution.reduce((total, item) => total + toNumber(item.count), 0);
+    return pipelineDistribution.reduce(
+      (total, item) => total + toNumber(item.count),
+      0
+    );
   }, [pipelineDistribution]);
 
   const sourceTotal = useMemo(() => {
-    return sourceBreakdown.reduce((total, item) => total + toNumber(item.count), 0);
+    return sourceBreakdown.reduce(
+      (total, item) => total + toNumber(item.count),
+      0
+    );
   }, [sourceBreakdown]);
 
   const staffPerformance = useMemo(() => {
@@ -354,7 +383,9 @@ export default function DashboardPage() {
         return activeLeadsDiff;
       }
 
-      return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
+      return String(a?.fullName || "").localeCompare(
+        String(b?.fullName || "")
+      );
     });
   }, [dashboard]);
 
@@ -408,7 +439,8 @@ export default function DashboardPage() {
             <span className="small-label">Owner dashboard</span>
             <h1>{user.clinicName?.trim() || "Clinic workspace"}</h1>
             <p style={subtleTextStyle}>
-              A live clinic-wide snapshot for leads, appointments, reviews, and staff performance.
+              A live clinic-wide snapshot for leads, appointments, reviews, and
+              staff performance.
             </p>
           </div>
 
@@ -431,11 +463,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {error ? (
-        <div className="error-banner">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className="error-banner">{error}</div> : null}
 
       {isLoading && !dashboard ? (
         <section className="page-card stack">
@@ -468,10 +496,26 @@ export default function DashboardPage() {
         <>
           <section className="metrics-grid">
             {summaryCards.map((metric) => (
-              <article className="metric-card" key={metric.key}>
+              <article
+                className={`metric-card ${
+                  metric.href ? "metric-card-attention" : ""
+                }`}
+                key={metric.key}
+              >
                 <span className="small-label">{metric.label}</span>
                 <strong>{formatCount(metric.value)}</strong>
                 <p style={subtleTextStyle}>{metric.hint}</p>
+
+                {metric.href ? (
+                  <div className="metric-card-action-row">
+                    <Link
+                      href={metric.href}
+                      className="secondary-button compact-button"
+                    >
+                      {metric.actionLabel}
+                    </Link>
+                  </div>
+                ) : null}
               </article>
             ))}
           </section>
@@ -499,7 +543,8 @@ export default function DashboardPage() {
               <div className="stack-sm">
                 <span className="small-label">Staff performance</span>
                 <p style={subtleTextStyle}>
-                  Receptionist activity ranked by appointments booked, active workload, and follow-up execution.
+                  Receptionist activity ranked by appointments booked, active
+                  workload, and follow-up execution.
                 </p>
               </div>
 
@@ -526,17 +571,26 @@ export default function DashboardPage() {
                       <th>No-show handled</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {staffPerformance.map((member) => (
                       <tr key={member.userId}>
                         <td>
                           <div className="stack-sm">
-                            <strong>{member.fullName || "Unnamed staff member"}</strong>
-                            <span style={subtleTextStyle}>{member.email || "No email"}</span>
+                            <strong>
+                              {member.fullName || "Unnamed staff member"}
+                            </strong>
+                            <span style={subtleTextStyle}>
+                              {member.email || "No email"}
+                            </span>
                           </div>
                         </td>
                         <td>
-                          <span className={`status-pill ${getStaffStatusTone(member.status)}`}>
+                          <span
+                            className={`status-pill ${getStaffStatusTone(
+                              member.status
+                            )}`}
+                          >
                             {humanizeLabel(member.status, "Unknown")}
                           </span>
                         </td>
@@ -561,6 +615,26 @@ export default function DashboardPage() {
           </section>
         </>
       ) : null}
+
+      <style jsx global>{`
+        .metric-card-attention {
+          border-color: rgba(58, 94, 160, 0.24);
+        }
+
+        .metric-card-attention strong {
+          color: var(--accent);
+        }
+
+        .metric-card-action-row {
+          margin-top: 8px;
+          display: flex;
+        }
+
+        .metric-card-action-row .secondary-button {
+          width: 100%;
+          justify-content: center;
+        }
+      `}</style>
     </div>
   );
 }

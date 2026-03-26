@@ -117,6 +117,54 @@ async function findLeadById(leadId, client = null) {
   return result.rows[0] || null;
 }
 
+async function findLeadsByIds(leadIds = [], client = null) {
+  if (!Array.isArray(leadIds) || !leadIds.length) {
+    return [];
+  }
+
+  const normalizedLeadIds = [...new Set(leadIds.map((id) => Number(id)).filter(Boolean))];
+
+  if (!normalizedLeadIds.length) {
+    return [];
+  }
+
+  const query = `
+    SELECT
+      id,
+      clinic_id,
+      public_form_id,
+      patient_name,
+      phone,
+      email::text AS email,
+      source,
+      intake_channel,
+      service_requested,
+      notes,
+      preferred_appointment_at,
+      pipeline_status,
+      visibility_status,
+      assigned_to_user_id,
+      created_by_user_id,
+      first_contact_at,
+      last_contact_at,
+      next_followup_at,
+      archived_at,
+      archived_by_user_id,
+      archived_reason,
+      created_at,
+      updated_at
+    FROM leads
+    WHERE id = ANY($1::int[])
+    ORDER BY
+      CASE WHEN visibility_status = 'active' THEN 0 ELSE 1 END,
+      created_at DESC,
+      id DESC
+  `;
+
+  const result = await db.query(query, [normalizedLeadIds], client);
+  return result.rows;
+}
+
 async function createLead(input, client = null) {
   const query = `
     INSERT INTO leads (
@@ -424,6 +472,7 @@ async function listDuplicateWarnings(clinicId, client = null) {
 module.exports = {
   listLeads,
   findLeadById,
+  findLeadsByIds,
   createLead,
   updateLead,
   updateLeadAssignment,

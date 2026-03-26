@@ -77,6 +77,26 @@ async function assertReceptionistArchivePermission(clinicId, currentUser, visibi
   }
 }
 
+function sortDuplicateReviewLeads(leads = []) {
+  return [...leads].sort((a, b) => {
+    const visibilityRankA = a.visibilityStatus === 'active' ? 0 : 1;
+    const visibilityRankB = b.visibilityStatus === 'active' ? 0 : 1;
+
+    if (visibilityRankA !== visibilityRankB) {
+      return visibilityRankA - visibilityRankB;
+    }
+
+    const createdAtA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const createdAtB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+
+    if (createdAtA !== createdAtB) {
+      return createdAtB - createdAtA;
+    }
+
+    return Number(b.id) - Number(a.id);
+  });
+}
+
 async function listLeads(filters, currentUser) {
   const clinicId = resolveClinicId(filters.clinicId, currentUser);
   const visibilityStatus = filters.visibilityStatus || 'active';
@@ -264,17 +284,73 @@ async function listDuplicateWarnings(filters, currentUser) {
   }
 
   const clinicId = resolveClinicId(filters.clinicId, currentUser);
-  const rows = await leadsRepository.listDuplicateWarnings(clinicId);
+  const duplicateRows = await leadsRepository.listDuplicateWarnings(clinicId);
 
-  return rows.map((row) => ({
-    clinicId: row.clinic_id,
-    clinicName: row.clinic_name,
-    normalizedPhone: row.normalized_phone,
-    leadCount: row.lead_count,
-    activeLeadCount: row.active_lead_count,
-    archivedLeadCount: row.archived_lead_count,
-    leadIds: row.lead_ids,
-  }));
+  if (!duplicateRows.length) {
+    return {
+      clinicId,
+      clinicName: null,
+      totalGroups: 0,
+      totalLeads: 0,
+      totalActiveLeads: 0,
+      totalArchivedLeads: 0,
+      groups: [],
+    };
+  }
+
+  const allLeadIds = [
+    ...new Set(
+      duplicateRows.flatMap((row) =>
+        Array.isArray(row.lead_ids)
+          ? row.lead_ids.map((leadId) => Number(leadId)).filter(Boolean)
+          : []
+      )
+    ),
+  ];
+
+  const leadRows = await leadsRepository.findLeadsByIds(allLeadIds);
+  const leadMap = new Map(
+    leadRows.map((row) => {
+      const lead = mapLead(row);
+      return [Number(lead.id), lead];
+    })
+  );
+
+  const groups = duplicateRows.map((row) => {
+    const groupLeadIds = Array.isArray(row.lead_ids)
+      ? row.lead_ids.map((leadId) => Number(leadId)).filter(Boolean)
+      : [];
+
+    const leads = sortDuplicateReviewLeads(
+      groupLeadIds
+        .map((leadId) => leadMap.get(Number(leadId)))
+        .filter(Boolean)
+    );
+
+    return {
+      groupKey: `phone:${row.normalized_phone}`,
+      clinicId: row.clinic_id,
+      clinicName: row.clinic_name,
+      normalizedPhone: row.normalized_phone,
+      leadCount: row.lead_count,
+      activeLeadCount: row.active_lead_count,
+      archivedLeadCount: row.archived_lead_count,
+      hasArchivedLeads: Number(row.archived_lead_count) > 0,
+      leadIds: groupLeadIds,
+      primaryLeadId: leads[0]?.id || null,
+      leads,
+    };
+  });
+
+  return {
+    clinicId,
+    clinicName: duplicateRows[0]?.clinic_name || null,
+    totalGroups: groups.length,
+    totalLeads: groups.reduce((sum, group) => sum + group.leadCount, 0),
+    totalActiveLeads: groups.reduce((sum, group) => sum + group.activeLeadCount, 0),
+    totalArchivedLeads: groups.reduce((sum, group) => sum + group.archivedLeadCount, 0),
+    groups,
+  };
 }
 
 module.exports = {

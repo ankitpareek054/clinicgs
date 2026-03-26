@@ -1056,7 +1056,8 @@ export default function LeadsPage() {
 
   const showingTo = Math.min(page * PAGE_SIZE, sortedLeads.length);
 
-
+  const canReviewDuplicates =
+    user?.role === "owner" || user?.role === "super_admin";
 
 
   return (
@@ -1110,6 +1111,16 @@ export default function LeadsPage() {
 
 
           <div className="record-actions">
+
+            {canReviewDuplicates && (
+
+              <Link href="/leads/duplicates" className="secondary-button">
+
+                Review duplicates
+
+              </Link>
+
+            )}
 
             <Link href="/leads/new" className="primary-button">
 

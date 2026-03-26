@@ -12,9 +12,24 @@ export const leadPipelineOptions = [
   "cancelled",
 ];
 
+function normalizeDuplicateWarningsResponse(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.groups)) return data.groups;
+  if (Array.isArray(data?.duplicateWarnings)) return data.duplicateWarnings;
+  return [];
+}
+
 export async function listLeads(filters = {}) {
   const payload = await api.get(`/leads${buildQuery(filters)}`);
   return extractApiData(payload, []) || [];
+}
+
+export async function listDuplicateWarnings(filters = {}) {
+  const payload = await api.get(`/leads/duplicates${buildQuery(filters)}`);
+  const data = extractApiData(payload, []);
+  return normalizeDuplicateWarningsResponse(data);
 }
 
 export async function getLeadById(leadId) {
