@@ -56,3 +56,12 @@ export async function unassignLeadFromSelf(leadId) {
   const payload = await api.post(`/leads/${leadId}/unassign-self`, {});
   return extractApiData(payload);
 }
+
+
+
+
+export async function reassignLead(leadId, input) {
+  const payload = await api.post(`/leads/${leadId}/reassign`, input);
+  return extractApiData(payload);
+}
+

@@ -77,6 +77,19 @@ function maskCalendarId(value) {
   return `${value.slice(0, 4)}••••${value.slice(-4)}`;
 }
 
+function isMissingIntegrationsError(err) {
+  const message = String(err?.message || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    err?.status === 404 ||
+    message.includes("clinic integration settings not found") ||
+    message.includes("clinic integrations not found") ||
+    message.includes("integration settings not found")
+  );
+}
+
 export default function IntegrationsPage() {
   const router = useRouter();
   const { user, isBootstrapping } = useAuth();
@@ -116,7 +129,13 @@ export default function IntegrationsPage() {
 
         setIntegrations(data);
       } catch (err) {
-        setError(err?.message || "Could not load clinic integrations.");
+        if (isMissingIntegrationsError(err)) {
+          setIntegrations(null);
+          setError("");
+          setNotice("");
+        } else {
+          setError(err?.message || "Could not load clinic integrations.");
+        }
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -222,8 +241,25 @@ export default function IntegrationsPage() {
           <div className="empty-state">Loading integrations…</div>
         </section>
       ) : !integrations ? (
-        <section className="page-card">
-          <div className="empty-state">Clinic integrations are not available right now.</div>
+        <section className="page-card stack">
+          <div className="stack-sm">
+            <span className="small-label">Integrations not configured yet</span>
+            <p className="integrations-subtle">
+              This clinic does not have integration settings yet. Owners will be able to review
+              them here once they are configured.
+            </p>
+          </div>
+
+          <div className="integrations-header-actions">
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => loadIntegrations({ refresh: true })}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? "Refreshing..." : "Retry"}
+            </button>
+          </div>
         </section>
       ) : (
         <>
@@ -291,7 +327,11 @@ export default function IntegrationsPage() {
                   <h3 className="integrations-card-title">Webhook and reports</h3>
                 </div>
 
-                <span className={`status-pill ${integrations.dailyOwnerReportEnabled ? "done" : "pending"}`}>
+                <span
+                  className={`status-pill ${
+                    integrations.dailyOwnerReportEnabled ? "done" : "pending"
+                  }`}
+                >
                   {integrations.dailyOwnerReportEnabled ? "Reports enabled" : "Reports disabled"}
                 </span>
               </div>
@@ -340,7 +380,8 @@ export default function IntegrationsPage() {
               </div>
 
               <div className="integrations-readonly-note">
-                Owners can review these values here, but integration changes are reserved for super admin.
+                Owners can review these values here, but integration changes are reserved for super
+                admin.
               </div>
             </article>
           </section>
@@ -428,4 +469,3 @@ export default function IntegrationsPage() {
     </div>
   );
 }
-

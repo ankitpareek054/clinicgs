@@ -1,3 +1,4 @@
+
 "use client";
 
 
@@ -27,6 +28,8 @@ import {
   unassignLeadFromSelf,
 
   updateLead,
+
+  reassignLead,
 
 } from "../../../lib/receptionist/leadsApi";
 
@@ -171,6 +174,8 @@ function buildDrawerState() {
     leadForm: buildLeadForm(null),
 
     pipelineStatus: "new",
+
+    assignmentUserId: "",
 
   };
 
@@ -365,6 +370,14 @@ function sortLeadRows(rows, sortState, getAssigneeLabel) {
 
 
   return next;
+
+}
+
+
+
+function canManageLeadReassignment(user) {
+
+  return user?.role === "owner" || user?.role === "super_admin";
 
 }
 
@@ -574,11 +587,25 @@ export default function LeadsPage() {
 
 
 
+  const activeReceptionists = useMemo(() => {
+
+    return users.filter(
+
+      (item) => item.role === "receptionist" && item.status === "active"
+
+    );
+
+  }, [users]);
+
+
+
   const getAssigneeLabel = useCallback(
 
     (lead) => {
 
       if (!lead?.assignedToUserId) return "Unassigned";
+
+
 
       return (
 
@@ -594,6 +621,39 @@ export default function LeadsPage() {
 
   );
 
+
+  function syncLeadLocally(updatedLead) {
+  if (!updatedLead) return;
+
+  setLeads((current) =>
+    current.map((item) =>
+      Number(item.id) === Number(updatedLead.id)
+        ? { ...item, ...updatedLead }
+        : item
+    )
+  );
+
+  setDrawer((current) => {
+    if (!current.lead || Number(current.lead.id) !== Number(updatedLead.id)) {
+      return current;
+    }
+
+    const mergedLead = {
+      ...current.lead,
+      ...updatedLead,
+    };
+
+    return {
+      ...current,
+      lead: mergedLead,
+      leadForm: buildLeadForm(mergedLead),
+      pipelineStatus: mergedLead.pipelineStatus || "new",
+      assignmentUserId: mergedLead.assignedToUserId
+        ? String(mergedLead.assignedToUserId)
+        : "",
+    };
+  });
+}
 
 
   const filteredLeads = useMemo(() => {
@@ -755,6 +815,8 @@ export default function LeadsPage() {
         leadForm: buildLeadForm(lead),
 
         pipelineStatus: lead.pipelineStatus || "new",
+
+        assignmentUserId: lead.assignedToUserId ? String(lead.assignedToUserId) : "",
 
       });
 
@@ -922,115 +984,98 @@ export default function LeadsPage() {
 
 
 
-  async function handleAssignToggle(lead) {
+async function handleAssignToggle(lead) {
+  const isMine = Number(lead.assignedToUserId) === Number(user?.id);
 
-    const isMine = Number(lead.assignedToUserId) === Number(user?.id);
+  setBusyKey(`assign-${lead.id}`);
+  setError("");
+  setNotice("");
 
+  try {
+    const updatedLead = isMine
+      ? await unassignLeadFromSelf(lead.id)
+      : await assignLeadToSelf(lead.id);
 
+    syncLeadLocally(updatedLead);
 
-    setBusyKey(`assign-${lead.id}`);
-
-    setError("");
-
-    setNotice("");
-
-
-
-    try {
-
-      if (isMine) {
-
-        await unassignLeadFromSelf(lead.id);
-
-        setNotice("Lead unassigned from you.");
-
-      } else {
-
-        await assignLeadToSelf(lead.id);
-
-        setNotice("Lead picked up successfully.");
-
-      }
-
-
-
-      await loadLeadsPage();
-
-
-
-      if (selectedLeadId === lead.id) {
-
-        await loadLeadDrawer(lead.id);
-
-      }
-
-    } catch (err) {
-
-      setError(err.message || "Could not update assignment.");
-
-    } finally {
-
-      setBusyKey("");
-
-    }
-
+    setNotice(isMine ? "Lead unassigned from you." : "Lead picked up successfully.");
+  } catch (err) {
+    setError(err.message || "Could not update assignment.");
+  } finally {
+    setBusyKey("");
   }
+}
 
 
 
-  async function handleSaveLeadSummary() {
+async function handleSaveLeadSummary() {
+  if (!selectedLeadId) return;
 
-    if (!selectedLeadId) return;
+  setBusyKey("drawer-save-summary");
+  setError("");
+  setNotice("");
 
+  try {
+    const updatedLead = await updateLead(selectedLeadId, {
+      patientName: drawer.leadForm.patientName,
+      phone: drawer.leadForm.phone,
+      email: drawer.leadForm.email,
+      source: drawer.leadForm.source || null,
+      serviceRequested: drawer.leadForm.serviceRequested || null,
+      notes: drawer.leadForm.notes || null,
+      pipelineStatus: drawer.pipelineStatus,
+    });
 
+    syncLeadLocally(updatedLead);
 
-    setBusyKey("drawer-save-summary");
+    setDrawer((current) => ({
+      ...current,
+      isEditingLeadSummary: false,
+    }));
 
-    setError("");
-
-    setNotice("");
-
-
-
-    try {
-
-      await updateLead(selectedLeadId, {
-
-        patientName: drawer.leadForm.patientName,
-
-        phone: drawer.leadForm.phone,
-
-        email: drawer.leadForm.email,
-
-        source: drawer.leadForm.source || null,
-
-        serviceRequested: drawer.leadForm.serviceRequested || null,
-
-        notes: drawer.leadForm.notes || null,
-
-        pipelineStatus: drawer.pipelineStatus,
-
-      });
-
-
-
-      setNotice("Lead summary updated.");
-
-      await loadLeadsPage();
-
-      await loadLeadDrawer(selectedLeadId);
-
-    } catch (err) {
-
-      setError(err.message || "Could not update lead summary.");
-
-    } finally {
-
-      setBusyKey("");
-
-    }
-
+    setNotice("Lead summary updated.");
+  } catch (err) {
+    setError(err.message || "Could not update lead summary.");
+  } finally {
+    setBusyKey("");
   }
+}
+
+
+
+async function handleSaveLeadAssignment() {
+  if (!selectedLeadId || !canManageLeadReassignment(user)) return;
+
+  setBusyKey("drawer-save-assignment");
+  setError("");
+  setNotice("");
+
+  try {
+    const nextAssignedToUserId = drawer.assignmentUserId
+      ? Number(drawer.assignmentUserId)
+      : null;
+
+    const updatedLead = await reassignLead(selectedLeadId, {
+      assignedToUserId: nextAssignedToUserId,
+    });
+
+    syncLeadLocally(updatedLead);
+
+    const assignedUser = activeReceptionists.find(
+      (item) => Number(item.id) === Number(nextAssignedToUserId)
+    );
+
+    setNotice(
+      nextAssignedToUserId
+        ? `Lead reassigned to ${assignedUser?.fullName || "selected receptionist"}.`
+        : "Lead moved to unassigned."
+    );
+  } catch (err) {
+    setError(err.message || "Could not reassign lead.");
+  } finally {
+    setBusyKey("");
+  }
+}
 
 
 
@@ -1052,12 +1097,40 @@ export default function LeadsPage() {
 
 
 
+  const canOwnerReassignInDrawer =
+
+    canManageLeadReassignment(user) && Boolean(drawer.lead);
+
+
+
+  const hasLeadAssignmentChanged =
+
+    String(drawer.assignmentUserId || "") !==
+
+    String(drawer.lead?.assignedToUserId || "");
+
+
+
+  const currentDrawerAssigneeNeedsFallbackOption =
+
+    Boolean(drawer.lead?.assignedToUserId) &&
+
+    !activeReceptionists.some(
+
+      (item) => Number(item.id) === Number(drawer.lead?.assignedToUserId)
+
+    );
+
+
+
   const showingFrom = sortedLeads.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
 
   const showingTo = Math.min(page * PAGE_SIZE, sortedLeads.length);
 
   const canReviewDuplicates =
+
     user?.role === "owner" || user?.role === "super_admin";
+
 
 
   return (
@@ -1262,30 +1335,53 @@ export default function LeadsPage() {
 
 
 
-<div className="lead-filter-trigger-wrap">
-  <button
-    type="button"
-    className={`secondary-button lead-filter-trigger ${
-      showFilters || hasActiveFilters ? "lead-filter-trigger-active" : ""
-    }`}
-    onClick={() => setShowFilters((current) => !current)}
-    aria-pressed={showFilters || hasActiveFilters}
-  >
-    Filters
-  </button>
+            <div className="lead-filter-trigger-wrap">
 
-  {hasActiveFilters && (
-    <button
-      type="button"
-      className="lead-filter-clear-badge"
-      onClick={handleClearFilters}
-      aria-label="Clear applied filters"
-      title="Clear applied filters"
-    >
-      ×
-    </button>
-  )}
-</div>
+              <button
+
+                type="button"
+
+                className={`secondary-button lead-filter-trigger ${
+
+                  showFilters || hasActiveFilters ? "lead-filter-trigger-active" : ""
+
+                }`}
+
+                onClick={() => setShowFilters((current) => !current)}
+
+                aria-pressed={showFilters || hasActiveFilters}
+
+              >
+
+                Filters
+
+              </button>
+
+
+
+              {hasActiveFilters && (
+
+                <button
+
+                  type="button"
+
+                  className="lead-filter-clear-badge"
+
+                  onClick={handleClearFilters}
+
+                  aria-label="Clear applied filters"
+
+                  title="Clear applied filters"
+
+                >
+
+                  ×
+
+                </button>
+
+              )}
+
+            </div>
 
 
 
@@ -1459,19 +1555,31 @@ export default function LeadsPage() {
 
 
 
-<div className="record-actions inline-filter-actions">
-  <button type="submit" className="primary-button">
-    Apply filters
-  </button>
+            <div className="record-actions inline-filter-actions">
 
-  <button
-    type="button"
-    className="secondary-button"
-    onClick={() => setShowFilters(false)}
-  >
-    Close
-  </button>
-</div>
+              <button type="submit" className="primary-button">
+
+                Apply filters
+
+              </button>
+
+
+
+              <button
+
+                type="button"
+
+                className="secondary-button"
+
+                onClick={() => setShowFilters(false)}
+
+              >
+
+                Close
+
+              </button>
+
+            </div>
 
           </form>
 
@@ -2353,6 +2461,134 @@ export default function LeadsPage() {
 
                 </section>
 
+
+
+                {canOwnerReassignInDrawer ? (
+
+                  <section className="page-card drawer-card lead-drawer-card">
+
+                    <div className="section-heading">
+
+                      <div>
+
+                        <h3>Lead assignment</h3>
+
+                        <p className="muted">
+
+                          Reassign this lead to an active receptionist in the clinic, or move it
+
+                          back to unassigned.
+
+                        </p>
+
+                      </div>
+
+
+
+                      <div className="record-actions">
+
+                        <button
+
+                          type="button"
+
+                          className="primary-button"
+
+                          disabled={
+
+                            busyKey === "drawer-save-assignment" ||
+
+                            !hasLeadAssignmentChanged
+
+                          }
+
+                          onClick={handleSaveLeadAssignment}
+
+                        >
+
+                          {busyKey === "drawer-save-assignment"
+
+                            ? "Saving assignment..."
+
+                            : "Save assignment"}
+
+                        </button>
+
+                      </div>
+
+                    </div>
+
+
+
+                    <div className="lead-assignment-panel">
+
+                      <div className="field">
+
+                        <label>Assign to receptionist</label>
+
+                        <select
+
+                          value={drawer.assignmentUserId}
+
+                          onChange={(event) =>
+
+                            setDrawer((current) => ({
+
+                              ...current,
+
+                              assignmentUserId: event.target.value,
+
+                            }))
+
+                          }
+
+                          disabled={busyKey === "drawer-save-assignment"}
+
+                        >
+
+                          <option value="">Leave unassigned</option>
+
+
+
+                          {currentDrawerAssigneeNeedsFallbackOption ? (
+
+                            <option value={String(drawer.lead?.assignedToUserId)}>
+
+                              Current assignee: {selectedLeadAssignee}
+
+                            </option>
+
+                          ) : null}
+
+
+
+                          {activeReceptionists.map((member) => (
+
+                            <option key={member.id} value={String(member.id)}>
+
+                              {member.fullName || member.email}
+
+                            </option>
+
+                          ))}
+
+                        </select>
+
+                      </div>
+
+
+
+                      <div className="lead-assignment-note">
+
+                        Only active receptionists from this clinic are shown here.
+
+                      </div>
+
+                    </div>
+
+                  </section>
+
+                ) : null}
+
               </div>
 
             )}
@@ -2549,57 +2785,109 @@ export default function LeadsPage() {
 
         }
 
+
+
         .lead-filter-trigger-wrap {
-  position: relative;
-  display: inline-flex;
-}
 
-.lead-filter-trigger {
-  transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
-}
+          position: relative;
 
-.lead-filter-trigger-active {
-  background: rgba(48, 54, 64, 0.12);
-  border-color: rgba(48, 54, 64, 0.28);
-  color: var(--text-soft, #2e3b4e);
-}
+          display: inline-flex;
 
-.lead-filter-clear-badge {
-  position: absolute;
-  top: -7px;
-  right: -7px;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 999px;
-  background: #2f3138;
-  color: #ffffff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(20, 24, 32, 0.18);
-  transition:
-    transform 120ms ease,
-    background 120ms ease,
-    box-shadow 120ms ease;
-}
+        }
 
-.lead-filter-clear-badge:hover {
-  background: #23252b;
-  transform: scale(1.04);
-}
 
-.lead-filter-clear-badge:focus-visible {
-  outline: 2px solid rgba(92, 118, 168, 0.35);
-  outline-offset: 2px;
-}
+
+        .lead-filter-trigger {
+
+          transition:
+
+            background 140ms ease,
+
+            border-color 140ms ease,
+
+            color 140ms ease,
+
+            box-shadow 140ms ease;
+
+        }
+
+
+
+        .lead-filter-trigger-active {
+
+          background: rgba(48, 54, 64, 0.12);
+
+          border-color: rgba(48, 54, 64, 0.28);
+
+          color: var(--text-soft, #2e3b4e);
+
+        }
+
+
+
+        .lead-filter-clear-badge {
+
+          position: absolute;
+
+          top: -7px;
+
+          right: -7px;
+
+          width: 20px;
+
+          height: 20px;
+
+          border: none;
+
+          border-radius: 999px;
+
+          background: #2f3138;
+
+          color: #ffffff;
+
+          display: inline-flex;
+
+          align-items: center;
+
+          justify-content: center;
+
+          font-size: 13px;
+
+          line-height: 1;
+
+          cursor: pointer;
+
+          box-shadow: 0 4px 10px rgba(20, 24, 32, 0.18);
+
+          transition:
+
+            transform 120ms ease,
+
+            background 120ms ease,
+
+            box-shadow 120ms ease;
+
+        }
+
+
+
+        .lead-filter-clear-badge:hover {
+
+          background: #23252b;
+
+          transform: scale(1.04);
+
+        }
+
+
+
+        .lead-filter-clear-badge:focus-visible {
+
+          outline: 2px solid rgba(92, 118, 168, 0.35);
+
+          outline-offset: 2px;
+
+        }
 
 
 
@@ -2733,6 +3021,36 @@ export default function LeadsPage() {
 
 
 
+        .lead-assignment-panel {
+
+          display: grid;
+
+          gap: 12px;
+
+          margin-top: 14px;
+
+        }
+
+
+
+        .lead-assignment-note {
+
+          border: 1px solid var(--border-color, rgba(116, 136, 170, 0.24));
+
+          background: var(--surface-soft, rgba(92, 118, 168, 0.04));
+
+          border-radius: 14px;
+
+          padding: 12px 14px;
+
+          color: var(--muted, #66758b);
+
+          font-size: 14px;
+
+        }
+
+
+
         @media (max-width: 1100px) {
 
           .leads-summary-grid {
@@ -2782,3 +3100,4 @@ export default function LeadsPage() {
   );
 
 }
+

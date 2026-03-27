@@ -61,6 +61,18 @@ function getRoleTone(role) {
   return "staff-role-default";
 }
 
+function buildDeactivateWarningMessage(member) {
+  const staffName = member.fullName || member.email || "this receptionist";
+
+  return [
+    `Deactivate ${staffName}?`,
+    "",
+    "This will revoke their active access.",
+    "Any currently assigned active leads will become unassigned automatically.",
+    "You can reassign those leads later from the leads workflow.",
+  ].join("\n");
+}
+
 export default function StaffPage() {
   const router = useRouter();
   const { user, isBootstrapping } = useAuth();
@@ -153,6 +165,13 @@ export default function StaffPage() {
   }, [staff]);
 
   async function handleStatusChange(member, nextStatus) {
+    if (nextStatus === "inactive") {
+      const confirmed = window.confirm(buildDeactivateWarningMessage(member));
+      if (!confirmed) {
+        return;
+      }
+    }
+
     try {
       setBusyUserId(member.id);
       setError("");
@@ -442,9 +461,7 @@ export default function StaffPage() {
                         </span>
                       </div>
 
-                      <h3 className="staff-card-title">
-                        {member.fullName || "Unnamed user"}
-                      </h3>
+                      <h3 className="staff-card-title">{member.fullName || "Unnamed user"}</h3>
                     </div>
 
                     <div className="staff-card-actions">
@@ -496,7 +513,7 @@ export default function StaffPage() {
                     </div>
                   </div>
 
-                  {(member.deactivatedAt || member.removedAt || member.removalReason) ? (
+                  {member.deactivatedAt || member.removedAt || member.removalReason ? (
                     <div className="stack-sm">
                       <span className="small-label">Status history</span>
                       <div className="staff-history-grid">
