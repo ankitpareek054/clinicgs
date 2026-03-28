@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PagePlaceholder from "../../../components/shared/pagePlaceHolder";
@@ -8,7 +7,7 @@ import { api, extractApiData } from "../../../lib/api/api";
 import { isOwnerLike } from "../../../lib/auth/auth";
 import { useAuth } from "../../../providers/sessionProvider";
 
-const SUMMARY_METRICS = [
+const OWNER_SUMMARY_METRICS = [
   {
     key: "leadsToday",
     label: "Leads today",
@@ -28,6 +27,7 @@ const SUMMARY_METRICS = [
     key: "overdueFollowups",
     label: "Overdue follow-ups",
     hint: "Leads needing follow-up attention",
+    tone: "attention",
   },
   {
     key: "appointmentsToday",
@@ -58,6 +58,54 @@ const SUMMARY_METRICS = [
     key: "duplicateWarnings",
     label: "Duplicate warnings",
     hint: "Potential duplicate lead groups",
+    tone: "attention",
+  },
+];
+
+const SUPER_ADMIN_SUMMARY_METRICS = [
+  {
+    key: "totalClinics",
+    label: "Total clinics",
+    hint: "Clinic workspaces on the platform",
+  },
+  {
+    key: "totalLeads",
+    label: "Total leads",
+    hint: "All visible leads across clinics",
+  },
+  {
+    key: "leadsLast7Days",
+    label: "Leads last 7 days",
+    hint: "Fresh platform activity this week",
+  },
+  {
+    key: "bookingsLast30Days",
+    label: "Bookings last 30 days",
+    hint: "Booked appointments across clinics this month",
+  },
+  {
+    key: "pendingStaffRequests",
+    label: "Pending staff requests",
+    hint: "Requests waiting for review",
+    tone: "attention",
+  },
+  {
+    key: "failedCalendarSyncs",
+    label: "Failed calendar syncs",
+    hint: "Calendar sync issues needing review",
+    tone: "attention",
+  },
+  {
+    key: "failedMessageLogs",
+    label: "Failed message logs",
+    hint: "Messaging failures across clinics",
+    tone: "attention",
+  },
+  {
+    key: "noShowRatePct",
+    label: "No-show rate",
+    hint: "Current platform-level no-show rate",
+    formatter: "percent",
   },
 ];
 
@@ -86,6 +134,37 @@ const breakdownItemHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
+  gap: "12px",
+};
+
+const attentionGridStyle = {
+  display: "grid",
+  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+};
+
+const attentionMetricRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+};
+
+const pillRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+};
+
+const rankedListStyle = {
+  display: "grid",
+  gap: "12px",
+};
+
+const rankedListItemStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
   gap: "12px",
 };
 
@@ -138,6 +217,28 @@ function formatMinutes(value) {
   return `${hours} hr ${minutes} min`;
 }
 
+function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return "—";
+  }
+
+  return `${parsed.toFixed(parsed % 1 === 0 ? 0 : 1)}%`;
+}
+
+function formatMetricValue(metric, value) {
+  if (metric?.formatter === "percent") {
+    return formatPercent(value);
+  }
+
+  return formatCount(value);
+}
+
 function humanizeLabel(value, fallback = "Unspecified") {
   if (value === null || value === undefined || value === "") {
     return fallback;
@@ -165,6 +266,21 @@ function formatLastUpdated(value) {
   }
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "—";
+  }
+
+  try {
+    return new Intl.DateTimeFormat("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return "—";
+  }
+}
+
 function getPercent(count, total) {
   if (!total) {
     return "0%";
@@ -173,22 +289,79 @@ function getPercent(count, total) {
   return `${Math.round((toNumber(count) / total) * 100)}%`;
 }
 
-function getStaffStatusTone(status) {
-  const normalized = String(status || "").trim().toLowerCase();
+function getStatusTone(status) {
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
 
-  if (["active", "approved"].includes(normalized)) {
+  if (
+    [
+      "active",
+      "approved",
+      "resolved",
+      "connected",
+      "completed",
+      "done",
+      "healthy",
+    ].includes(normalized)
+  ) {
     return "done";
   }
 
-  if (["pending", "invited"].includes(normalized)) {
+  if (
+    [
+      "pending",
+      "invited",
+      "open",
+      "warning",
+      "attention",
+      "in_progress",
+      "in progress",
+      "requested",
+      "trial",
+      "onboarding",
+    ].includes(normalized)
+  ) {
     return "pending";
   }
 
-  if (["inactive", "disabled", "removed", "suspended"].includes(normalized)) {
+  if (
+    [
+      "inactive",
+      "disabled",
+      "removed",
+      "suspended",
+      "failed",
+      "rejected",
+      "cancelled",
+      "closed",
+      "archived",
+      "error",
+    ].includes(normalized)
+  ) {
     return "cancelled";
   }
 
   return "pending";
+}
+
+function getClinicSelectionFromItem(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const clinicId = item.clinicId ?? item.id ?? null;
+
+  if (!clinicId) {
+    return null;
+  }
+
+  return {
+    id: clinicId,
+    name: item.clinicName || item.name || "Clinic workspace",
+    status: item.clinicStatus || item.status || "",
+    city: item.city || "",
+  };
 }
 
 function BreakdownSection({
@@ -219,7 +392,9 @@ function BreakdownSection({
               <article className="soft-card stack-sm" key={`${label}-${index}`}>
                 <div style={breakdownItemHeaderStyle}>
                   <strong>{label}</strong>
-                  <span className="small-label">{getPercent(count, total)}</span>
+                  <span className="small-label">
+                    {getPercent(count, total)}
+                  </span>
                 </div>
 
                 <div className="stack-sm">
@@ -239,9 +414,55 @@ function BreakdownSection({
   );
 }
 
+function RankedListSection({
+  title,
+  description,
+  items,
+  emptyText,
+  renderLabel,
+  renderValue,
+  renderMeta,
+}) {
+  return (
+    <section className="page-card stack">
+      <div className="stack-sm">
+        <span className="small-label">{title}</span>
+        <p style={subtleTextStyle}>{description}</p>
+      </div>
+
+      {items.length > 0 ? (
+        <div style={rankedListStyle}>
+          {items.map((item, index) => (
+            <article className="soft-card stack-sm" key={`${title}-${index}`}>
+              <div style={rankedListItemStyle}>
+                <div className="stack-sm">
+                  <strong>{renderLabel(item)}</strong>
+                  {renderMeta ? (
+                    <span style={subtleTextStyle}>{renderMeta(item)}</span>
+                  ) : null}
+                </div>
+                <strong>{renderValue(item)}</strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">{emptyText}</div>
+      )}
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isBootstrapping } = useAuth();
+  const {
+    user,
+    isBootstrapping,
+    selectedAdminClinic,
+    adminWorkspaceMode,
+    setAdminClinic,
+    clearAdminClinic,
+  } = useAuth();
 
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -249,18 +470,24 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
 
+  const isSuperAdmin = user?.role === "super_admin";
+  const isOwner = user?.role === "owner";
+
+  const safeSetAdminClinic =
+    typeof setAdminClinic === "function" ? setAdminClinic : () => null;
+
+  const safeClearAdminClinic =
+    typeof clearAdminClinic === "function" ? clearAdminClinic : () => {};
+
   useEffect(() => {
     if (!isBootstrapping && user && !isOwnerLike(user)) {
       router.replace("/my-tasks");
     }
   }, [isBootstrapping, router, user]);
 
-  const showClinicOwnerOnlyPlaceholder =
-    user?.role === "super_admin" && !user?.clinicId;
-
   const loadDashboard = useCallback(
     async ({ refresh = false } = {}) => {
-      if (!user || !isOwnerLike(user) || showClinicOwnerOnlyPlaceholder) {
+      if (!user || !isOwnerLike(user)) {
         return;
       }
 
@@ -273,54 +500,57 @@ export default function DashboardPage() {
           setIsLoading(true);
         }
 
-        const payload = await api.get("/dashboards/clinic");
+        const endpoint =
+          user.role === "super_admin"
+            ? "/dashboards/super-admin"
+            : "/dashboards/clinic";
+
+        const payload = await api.get(endpoint);
         const data = extractApiData(payload, null);
 
         if (!data) {
-          throw new Error("Could not read the clinic dashboard response.");
+          throw new Error("Could not read the dashboard response.");
         }
 
         setDashboard(data);
         setLastUpdatedAt(new Date().toISOString());
       } catch (err) {
-        setError(err?.message || "Could not load the owner dashboard.");
+        setError(
+          err?.message ||
+            (user?.role === "super_admin"
+              ? "Could not load the super admin dashboard."
+              : "Could not load the owner dashboard."),
+        );
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
       }
     },
-    [showClinicOwnerOnlyPlaceholder, user]
+    [user],
   );
 
   useEffect(() => {
-    if (
-      !isBootstrapping &&
-      user &&
-      isOwnerLike(user) &&
-      !showClinicOwnerOnlyPlaceholder
-    ) {
+    if (!isBootstrapping && user && isOwnerLike(user)) {
       loadDashboard();
     }
-  }, [isBootstrapping, loadDashboard, showClinicOwnerOnlyPlaceholder, user]);
+  }, [isBootstrapping, loadDashboard, user]);
 
-  const summaryCards = useMemo(() => {
+  const ownerSummaryCards = useMemo(() => {
     const summary = dashboard?.summary || {};
 
-    return SUMMARY_METRICS.map((metric) => {
-      const value = summary?.[metric.key];
-      const isDuplicateMetric = metric.key === "duplicateWarnings";
+    return OWNER_SUMMARY_METRICS.map((metric) => ({
+      ...metric,
+      value: summary?.[metric.key],
+    }));
+  }, [dashboard]);
 
-      return {
-        ...metric,
-        value,
-        href: isDuplicateMetric ? "/leads/duplicates" : null,
-        actionLabel: isDuplicateMetric
-          ? toNumber(value) > 0
-            ? "Review duplicates"
-            : "Open review page"
-          : null,
-      };
-    });
+  const superAdminSummaryCards = useMemo(() => {
+    const summary = dashboard?.summary || {};
+
+    return SUPER_ADMIN_SUMMARY_METRICS.map((metric) => ({
+      ...metric,
+      value: summary?.[metric.key],
+    }));
   }, [dashboard]);
 
   const pipelineDistribution = useMemo(() => {
@@ -352,14 +582,14 @@ export default function DashboardPage() {
   const pipelineTotal = useMemo(() => {
     return pipelineDistribution.reduce(
       (total, item) => total + toNumber(item.count),
-      0
+      0,
     );
   }, [pipelineDistribution]);
 
   const sourceTotal = useMemo(() => {
     return sourceBreakdown.reduce(
       (total, item) => total + toNumber(item.count),
-      0
+      0,
     );
   }, [sourceBreakdown]);
 
@@ -383,21 +613,169 @@ export default function DashboardPage() {
         return activeLeadsDiff;
       }
 
-      return String(a?.fullName || "").localeCompare(
-        String(b?.fullName || "")
+      return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
+    });
+  }, [dashboard]);
+
+  const clinicsByStatus = useMemo(() => {
+    const items = Array.isArray(dashboard?.clinicsByStatus)
+      ? dashboard.clinicsByStatus
+      : [];
+
+    return items
+      .map((item) => ({
+        status: item?.status,
+        count: toNumber(item?.count),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [dashboard]);
+
+  const clinicsByStatusTotal = useMemo(() => {
+    const summaryTotal = toNumber(dashboard?.summary?.totalClinics);
+
+    if (summaryTotal > 0) {
+      return summaryTotal;
+    }
+
+    return clinicsByStatus.reduce(
+      (total, item) => total + toNumber(item.count),
+      0,
+    );
+  }, [clinicsByStatus, dashboard]);
+
+  const topGrowthClinics = useMemo(() => {
+    const items = Array.isArray(dashboard?.topGrowthClinics)
+      ? dashboard.topGrowthClinics
+      : [];
+
+    return [...items].sort((a, b) => {
+      const scoreDiff =
+        toNumber(b?.growthScore100) - toNumber(a?.growthScore100);
+
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return String(a?.clinicName || "").localeCompare(
+        String(b?.clinicName || ""),
       );
     });
   }, [dashboard]);
+
+  const clinicsNeedingAttention = useMemo(() => {
+    const items = Array.isArray(dashboard?.clinicsNeedingAttention)
+      ? dashboard.clinicsNeedingAttention
+      : [];
+
+    const scoreItem = (item) => {
+      let score = 0;
+      score += toNumber(item?.duplicatePhoneGroups);
+      score += toNumber(item?.unassignedActiveLeads);
+      score += toNumber(item?.openSupportTickets) * 2;
+      score += toNumber(item?.failedCalendarSyncs) * 3;
+      score += toNumber(item?.inactiveReceptionists);
+      if (item?.hasNoActiveReceptionist) {
+        score += 10;
+      }
+      return score;
+    };
+
+    return [...items].sort((a, b) => scoreItem(b) - scoreItem(a));
+  }, [dashboard]);
+
+  const pendingStaffRequests = useMemo(() => {
+    const items = Array.isArray(dashboard?.pendingStaffRequests)
+      ? dashboard.pendingStaffRequests
+      : [];
+
+    return [...items].sort((a, b) => {
+      const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [dashboard]);
+
+  const supportTicketsByClinic = useMemo(() => {
+    const items = Array.isArray(dashboard?.supportTicketsByClinic)
+      ? dashboard.supportTicketsByClinic
+      : [];
+
+    return [...items].sort((a, b) => {
+      const openDiff = toNumber(b?.openTickets) - toNumber(a?.openTickets);
+
+      if (openDiff !== 0) {
+        return openDiff;
+      }
+
+      return toNumber(b?.totalTickets) - toNumber(a?.totalTickets);
+    });
+  }, [dashboard]);
+
+  const overdueFollowupsByClinic = useMemo(() => {
+    const items = Array.isArray(dashboard?.overdueFollowupsByClinic)
+      ? dashboard.overdueFollowupsByClinic
+      : [];
+
+    return [...items]
+      .sort(
+        (a, b) => toNumber(b?.overdueFollowups) - toNumber(a?.overdueFollowups),
+      )
+      .slice(0, 6);
+  }, [dashboard]);
+
+  const averageResponseTimeByClinic = useMemo(() => {
+    const items = Array.isArray(dashboard?.averageResponseTimeByClinic)
+      ? dashboard.averageResponseTimeByClinic
+      : [];
+
+    return [...items]
+      .sort(
+        (a, b) =>
+          toNumber(b?.avgResponseMinutes) - toNumber(a?.avgResponseMinutes),
+      )
+      .slice(0, 6);
+  }, [dashboard]);
+
+  const duplicateWarningsByClinic = useMemo(() => {
+    const items = Array.isArray(dashboard?.duplicateWarningsByClinic)
+      ? dashboard.duplicateWarningsByClinic
+      : [];
+
+    return [...items]
+      .sort(
+        (a, b) => toNumber(b?.duplicateGroups) - toNumber(a?.duplicateGroups),
+      )
+      .slice(0, 6);
+  }, [dashboard]);
+
+  function openClinicWorkspace(clinicLike, targetPath = "/clinic-profile") {
+    const clinicSelection = getClinicSelectionFromItem(clinicLike);
+
+    if (!clinicSelection) {
+      return;
+    }
+
+    safeSetAdminClinic(clinicSelection);
+    router.push(targetPath);
+  }
+
+  function goToAdminPath(path) {
+    router.push(path);
+  }
+
+  function handleClearSelectedClinic() {
+    safeClearAdminClinic();
+  }
 
   if (isBootstrapping) {
     return (
       <PagePlaceholder
         title="Loading dashboard"
-        description="Checking your session and clinic access."
+        description="Checking your session and role-specific dashboard access."
         points={[
-          "Verifying owner access",
-          "Preparing clinic-level dashboard data",
-          "Keeping receptionist flows untouched",
+          "Verifying logged-in access",
+          "Preparing the correct dashboard by role",
+          "Keeping current receptionist and owner flows intact",
         ]}
       />
     );
@@ -407,41 +785,34 @@ export default function DashboardPage() {
     return (
       <PagePlaceholder
         title="Redirecting"
-        description="Dashboard is owner-first, so this user is being sent to My Tasks."
+        description="Dashboard is restricted to owner and super admin users, so this user is being sent to My Tasks."
         points={[
           "Receptionists land on My Tasks",
-          "Owners get clinic-wide visibility",
-          "Existing routing behavior stays intact",
+          "Owners keep clinic-level visibility",
+          "Super admin uses the same /dashboard route with platform-wide data",
         ]}
       />
     );
   }
 
-  if (showClinicOwnerOnlyPlaceholder) {
-    return (
-      <PagePlaceholder
-        title="Clinic dashboard is owner-specific"
-        description="This route is meant for a clinic owner context. Super admin dashboard should stay separate from the clinic owner dashboard."
-        points={[
-          "Owner dashboard uses clinic-scoped data",
-          "Super admin should get a platform-wide dashboard later",
-          "This avoids mixing owner and admin workflows",
-        ]}
-      />
-    );
-  }
+  const dashboardTitle = isSuperAdmin
+    ? "Platform overview"
+    : user.clinicName?.trim() || "Clinic workspace";
+
+  const dashboardDescription = isSuperAdmin
+    ? "Cross-clinic visibility for growth, attention flags, pending staff requests, sync health, and support load."
+    : "A live clinic-wide snapshot for leads, appointments, reviews, and staff performance.";
 
   return (
     <div className="page stack">
       <header className="page-header">
         <div style={sectionHeaderStyle}>
           <div className="stack-sm">
-            <span className="small-label">Owner dashboard</span>
-            <h1>{user.clinicName?.trim() || "Clinic workspace"}</h1>
-            <p style={subtleTextStyle}>
-              A live clinic-wide snapshot for leads, appointments, reviews, and
-              staff performance.
-            </p>
+            <span className="small-label">
+              {isSuperAdmin ? "Super admin dashboard" : "Owner dashboard"}
+            </span>
+            <h1>{dashboardTitle}</h1>
+            <p style={subtleTextStyle}>{dashboardDescription}</p>
           </div>
 
           <div style={actionRowStyle}>
@@ -463,13 +834,182 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {isSuperAdmin ? (
+        <section className="page-card stack admin-dashboard-toolbar">
+          <div style={sectionHeaderStyle}>
+            <div className="stack-sm">
+              <span className="small-label">Admin workspace context</span>
+              <h2 className="section-title">
+                {selectedAdminClinic?.name || "All clinics mode"}
+              </h2>
+              <p style={subtleTextStyle}>
+                {selectedAdminClinic
+                  ? "A clinic is selected for clinic-scoped admin pages. Dashboard metrics below remain platform-wide until the clinic dashboard endpoint accepts an explicit clinic id."
+                  : "You are in platform-wide mode. Use Clinics Hub or any clinic row below to enter a selected-clinic workspace."}
+              </p>
+            </div>
+
+            <div style={actionRowStyle}>
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() => goToAdminPath("/clinics")}
+              >
+                Open Clinics Hub
+              </button>
+
+              {selectedAdminClinic ? (
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={handleClearSelectedClinic}
+                >
+                  Clear selected clinic
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {selectedAdminClinic ? (
+            <div className="admin-context-meta-grid">
+              <article className="admin-context-meta-card">
+                <span className="small-label">Selected clinic</span>
+                <strong>
+                  {selectedAdminClinic.name || "Clinic workspace"}
+                </strong>
+                <p style={subtleTextStyle}>
+                  {humanizeLabel(selectedAdminClinic.status, "Status unknown")}
+                </p>
+              </article>
+
+              <article className="admin-context-meta-card">
+                <span className="small-label">Workspace mode</span>
+                <strong>
+                  {adminWorkspaceMode === "selected_clinic"
+                    ? "Selected clinic"
+                    : "All clinics"}
+                </strong>
+                <p style={subtleTextStyle}>
+                  {selectedAdminClinic?.city || "No city available"}
+                </p>
+              </article>
+            </div>
+          ) : null}
+
+          <div className="quick-action-grid">
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/clinics")}
+            >
+              Clinics Hub
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/staff-requests")}
+            >
+              Open staff requests
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/support")}
+            >
+              Open support
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/notifications")}
+            >
+              Open notifications
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/clinic-profile")}
+              disabled={!selectedAdminClinic}
+            >
+              Open clinic profile
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/clinic-settings")}
+              disabled={!selectedAdminClinic}
+            >
+              Open clinic settings
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/staff")}
+              disabled={!selectedAdminClinic}
+            >
+              Open clinic staff
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/integrations")}
+              disabled={!selectedAdminClinic}
+            >
+              Open integrations
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => goToAdminPath("/services")}
+              disabled={!selectedAdminClinic}
+            >
+              Open services
+            </button>
+          </div>
+
+          {selectedAdminClinic ? (
+            <div className="context-chip-row">
+              <span
+                className={`status-pill ${getStatusTone(
+                  selectedAdminClinic.status,
+                )}`}
+              >
+                {humanizeLabel(selectedAdminClinic.status, "Selected clinic")}
+              </span>
+
+              <span className="small-label">
+                Workspace mode:{" "}
+                {adminWorkspaceMode === "selected_clinic"
+                  ? "Selected clinic"
+                  : "All clinics"}
+              </span>
+
+              {selectedAdminClinic.city ? (
+                <span className="small-label">
+                  City: {selectedAdminClinic.city}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {error ? <div className="error-banner">{error}</div> : null}
 
       {isLoading && !dashboard ? (
         <section className="page-card stack">
           <span className="small-label">Loading</span>
           <p style={subtleTextStyle}>
-            Pulling the latest clinic dashboard numbers.
+            Pulling the latest {isSuperAdmin ? "platform" : "clinic"} dashboard
+            numbers.
           </p>
         </section>
       ) : null}
@@ -478,7 +1018,8 @@ export default function DashboardPage() {
         <section className="page-card stack">
           <span className="small-label">Dashboard unavailable</span>
           <div className="empty-state">
-            We could not load the clinic dashboard yet.
+            We could not load the {isSuperAdmin ? "platform" : "clinic"}{" "}
+            dashboard yet.
           </div>
           <div>
             <button
@@ -492,30 +1033,19 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {dashboard ? (
+      {dashboard && isOwner ? (
         <>
           <section className="metrics-grid">
-            {summaryCards.map((metric) => (
+            {ownerSummaryCards.map((metric) => (
               <article
                 className={`metric-card ${
-                  metric.href ? "metric-card-attention" : ""
+                  metric.tone === "attention" ? "metric-card-attention" : ""
                 }`}
                 key={metric.key}
               >
                 <span className="small-label">{metric.label}</span>
-                <strong>{formatCount(metric.value)}</strong>
+                <strong>{formatMetricValue(metric, metric.value)}</strong>
                 <p style={subtleTextStyle}>{metric.hint}</p>
-
-                {metric.href ? (
-                  <div className="metric-card-action-row">
-                    <Link
-                      href={metric.href}
-                      className="secondary-button compact-button"
-                    >
-                      {metric.actionLabel}
-                    </Link>
-                  </div>
-                ) : null}
               </article>
             ))}
           </section>
@@ -587,8 +1117,8 @@ export default function DashboardPage() {
                         </td>
                         <td>
                           <span
-                            className={`status-pill ${getStaffStatusTone(
-                              member.status
+                            className={`status-pill ${getStatusTone(
+                              member.status,
                             )}`}
                           >
                             {humanizeLabel(member.status, "Unknown")}
@@ -596,7 +1126,9 @@ export default function DashboardPage() {
                         </td>
                         <td>{formatCount(member.leadsCreated)}</td>
                         <td>{formatCount(member.currentlyHandledLeads)}</td>
-                        <td>{formatCount(member.leadsContactedOrProgressed)}</td>
+                        <td>
+                          {formatCount(member.leadsContactedOrProgressed)}
+                        </td>
                         <td>{formatCount(member.followupsCompleted)}</td>
                         <td>{formatCount(member.appointmentsBooked)}</td>
                         <td>{formatMinutes(member.avgResponseMinutes)}</td>
@@ -616,6 +1148,472 @@ export default function DashboardPage() {
         </>
       ) : null}
 
+      {dashboard && isSuperAdmin ? (
+        <>
+          <section className="metrics-grid">
+            {superAdminSummaryCards.map((metric) => (
+              <article
+                className={`metric-card ${
+                  metric.tone === "attention" ? "metric-card-attention" : ""
+                }`}
+                key={metric.key}
+              >
+                <span className="small-label">{metric.label}</span>
+                <strong>{formatMetricValue(metric, metric.value)}</strong>
+                <p style={subtleTextStyle}>{metric.hint}</p>
+              </article>
+            ))}
+          </section>
+
+          <BreakdownSection
+            title="Clinic status"
+            description="A quick cross-clinic view of how many workspaces sit in each clinic state."
+            items={clinicsByStatus}
+            total={clinicsByStatusTotal}
+            labelKey="status"
+            emptyText="No clinic status data is available yet."
+          />
+
+          <section className="page-card stack">
+            <div style={sectionHeaderStyle}>
+              <div className="stack-sm">
+                <span className="small-label">Clinics needing attention</span>
+                <p style={subtleTextStyle}>
+                  Priority clinics based on duplicate risk, unassigned work,
+                  open support load, sync issues, and staffing gaps.
+                </p>
+              </div>
+
+              <div style={actionRowStyle}>
+                <span className="small-label">
+                  {formatCount(clinicsNeedingAttention.length)} clinic
+                  {clinicsNeedingAttention.length === 1 ? "" : "s"}
+                </span>
+
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => goToAdminPath("/clinics")}
+                >
+                  Open Clinics Hub
+                </button>
+              </div>
+            </div>
+
+            {clinicsNeedingAttention.length > 0 ? (
+              <div style={attentionGridStyle}>
+                {clinicsNeedingAttention.map((clinic) => (
+                  <article
+                    className="soft-card stack-sm"
+                    key={clinic.clinicId || clinic.clinicName}
+                  >
+                    <div style={sectionHeaderStyle}>
+                      <div className="stack-sm">
+                        <strong>{clinic.clinicName || "Unknown clinic"}</strong>
+
+                        <div style={pillRowStyle}>
+                          <span
+                            className={`status-pill ${getStatusTone(
+                              clinic.clinicStatus,
+                            )}`}
+                          >
+                            {humanizeLabel(clinic.clinicStatus, "Unknown")}
+                          </span>
+
+                          {clinic.hasNoActiveReceptionist ? (
+                            <span className="status-pill cancelled">
+                              No active receptionist
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="context-action-column">
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={() =>
+                            openClinicWorkspace(clinic, "/clinic-profile")
+                          }
+                        >
+                          Open workspace
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          onClick={() => openClinicWorkspace(clinic, "/staff")}
+                        >
+                          Open staff
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="stack-sm">
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>Duplicate groups</span>
+                        <strong>
+                          {formatCount(clinic.duplicatePhoneGroups)}
+                        </strong>
+                      </div>
+
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>
+                          Unassigned active leads
+                        </span>
+                        <strong>
+                          {formatCount(clinic.unassignedActiveLeads)}
+                        </strong>
+                      </div>
+
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>
+                          Open support tickets
+                        </span>
+                        <strong>
+                          {formatCount(clinic.openSupportTickets)}
+                        </strong>
+                      </div>
+
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>
+                          Failed calendar syncs
+                        </span>
+                        <strong>
+                          {formatCount(clinic.failedCalendarSyncs)}
+                        </strong>
+                      </div>
+
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>
+                          Inactive receptionists
+                        </span>
+                        <strong>
+                          {formatCount(clinic.inactiveReceptionists)}
+                        </strong>
+                      </div>
+
+                      <div style={attentionMetricRowStyle}>
+                        <span style={subtleTextStyle}>
+                          Active receptionists
+                        </span>
+                        <strong>
+                          {formatCount(clinic.activeReceptionists)}
+                        </strong>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                No clinics are currently flagged for attention.
+              </div>
+            )}
+          </section>
+
+          <section className="page-card stack">
+            <div style={sectionHeaderStyle}>
+              <div className="stack-sm">
+                <span className="small-label">Pending staff requests</span>
+                <p style={subtleTextStyle}>
+                  Staff requests waiting for super-admin review.
+                </p>
+              </div>
+
+              <div style={actionRowStyle}>
+                <span className="small-label">
+                  {formatCount(pendingStaffRequests.length)} request
+                  {pendingStaffRequests.length === 1 ? "" : "s"}
+                </span>
+
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => goToAdminPath("/staff-requests")}
+                >
+                  Open queue
+                </button>
+              </div>
+            </div>
+
+            {pendingStaffRequests.length > 0 ? (
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Clinic</th>
+                      <th>Request type</th>
+                      <th>Target</th>
+                      <th>Role</th>
+                      <th>Requested at</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {pendingStaffRequests.map((request) => (
+                      <tr key={request.id}>
+                        <td>
+                          <strong>
+                            {request.clinicName || "Unknown clinic"}
+                          </strong>
+                        </td>
+                        <td>{humanizeLabel(request.requestType, "Unknown")}</td>
+                        <td>
+                          <div className="stack-sm">
+                            <strong>
+                              {request.targetName || "Unnamed user"}
+                            </strong>
+                            <span style={subtleTextStyle}>
+                              {request.targetEmail || "No email"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>{humanizeLabel(request.targetRole, "Unknown")}</td>
+                        <td>{formatDateTime(request.createdAt)}</td>
+                        <td>
+                          <div className="table-action-row">
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() => goToAdminPath("/staff-requests")}
+                            >
+                              Review
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() =>
+                                openClinicWorkspace(request, "/staff")
+                              }
+                            >
+                              Open clinic
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state">
+                No pending staff requests right now.
+              </div>
+            )}
+          </section>
+
+          <section className="two-column-dashboard-grid">
+            <RankedListSection
+              title="Overdue follow-ups by clinic"
+              description="Where follow-up discipline is slipping the most."
+              items={overdueFollowupsByClinic}
+              emptyText="No overdue follow-up hotspots right now."
+              renderLabel={(item) => item.clinicName || "Unknown clinic"}
+              renderValue={(item) => formatCount(item.overdueFollowups)}
+              renderMeta={() => "Overdue follow-ups"}
+            />
+
+            <RankedListSection
+              title="Slowest response times"
+              description="Clinics with the slowest average response time."
+              items={averageResponseTimeByClinic}
+              emptyText="No response-time data is available yet."
+              renderLabel={(item) => item.clinicName || "Unknown clinic"}
+              renderValue={(item) => formatMinutes(item.avgResponseMinutes)}
+              renderMeta={() => "Average response time"}
+            />
+
+            <RankedListSection
+              title="Duplicate warning hotspots"
+              description="Clinics with the highest duplicate warning load."
+              items={duplicateWarningsByClinic}
+              emptyText="No duplicate hotspots right now."
+              renderLabel={(item) => item.clinicName || "Unknown clinic"}
+              renderValue={(item) => formatCount(item.duplicateGroups)}
+              renderMeta={() => "Duplicate groups"}
+            />
+          </section>
+
+          <section className="page-card stack">
+            <div style={sectionHeaderStyle}>
+              <div className="stack-sm">
+                <span className="small-label">Support visibility</span>
+                <p style={subtleTextStyle}>
+                  Cross-clinic ticket volume and current open-ticket pressure.
+                </p>
+              </div>
+
+              <div style={actionRowStyle}>
+                <span className="small-label">
+                  {formatCount(supportTicketsByClinic.length)} clinic
+                  {supportTicketsByClinic.length === 1 ? "" : "s"}
+                </span>
+
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => goToAdminPath("/support")}
+                >
+                  Open support
+                </button>
+              </div>
+            </div>
+
+            {supportTicketsByClinic.length > 0 ? (
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Clinic</th>
+                      <th>Open</th>
+                      <th>Resolved</th>
+                      <th>Closed</th>
+                      <th>Total</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {supportTicketsByClinic.map((item) => (
+                      <tr key={item.clinicId || item.clinicName}>
+                        <td>
+                          <strong>{item.clinicName || "Unknown clinic"}</strong>
+                        </td>
+                        <td>{formatCount(item.openTickets)}</td>
+                        <td>{formatCount(item.resolvedTickets)}</td>
+                        <td>{formatCount(item.closedTickets)}</td>
+                        <td>{formatCount(item.totalTickets)}</td>
+                        <td>
+                          <div className="table-action-row">
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() => goToAdminPath("/support")}
+                            >
+                              View queue
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() =>
+                                openClinicWorkspace(item, "/clinic-profile")
+                              }
+                            >
+                              Open clinic
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state">
+                No support-ticket visibility data is available yet.
+              </div>
+            )}
+          </section>
+
+          <section className="page-card stack">
+            <div style={sectionHeaderStyle}>
+              <div className="stack-sm">
+                <span className="small-label">Top growth clinics</span>
+                <p style={subtleTextStyle}>
+                  Clinics ranked by the backend growth score using recent lead
+                  and booking activity.
+                </p>
+              </div>
+
+              <div style={actionRowStyle}>
+                <span className="small-label">
+                  {formatCount(topGrowthClinics.length)} clinic
+                  {topGrowthClinics.length === 1 ? "" : "s"}
+                </span>
+
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => goToAdminPath("/clinics")}
+                >
+                  Open Clinics Hub
+                </button>
+              </div>
+            </div>
+
+            {topGrowthClinics.length > 0 ? (
+              <div className="data-table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Clinic</th>
+                      <th>Status</th>
+                      <th>Leads 30d</th>
+                      <th>Bookings 30d</th>
+                      <th>Conversion</th>
+                      <th>Growth score</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {topGrowthClinics.map((clinic) => (
+                      <tr key={clinic.clinicId || clinic.clinicName}>
+                        <td>
+                          <strong>
+                            {clinic.clinicName || "Unknown clinic"}
+                          </strong>
+                        </td>
+                        <td>
+                          <span
+                            className={`status-pill ${getStatusTone(
+                              clinic.clinicStatus,
+                            )}`}
+                          >
+                            {humanizeLabel(clinic.clinicStatus, "Unknown")}
+                          </span>
+                        </td>
+                        <td>{formatCount(clinic.totalLeads30d)}</td>
+                        <td>{formatCount(clinic.bookedAppointments30d)}</td>
+                        <td>{formatPercent(clinic.conversionRatePct)}</td>
+                        <td>{formatCount(clinic.growthScore100)}</td>
+                        <td>
+                          <div className="table-action-row">
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() =>
+                                openClinicWorkspace(clinic, "/clinic-profile")
+                              }
+                            >
+                              Open workspace
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() =>
+                                openClinicWorkspace(clinic, "/integrations")
+                              }
+                            >
+                              Integrations
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state">
+                No growth-ranking data is available yet.
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
+
       <style jsx global>{`
         .metric-card-attention {
           border-color: rgba(58, 94, 160, 0.24);
@@ -625,14 +1623,61 @@ export default function DashboardPage() {
           color: var(--accent);
         }
 
-        .metric-card-action-row {
-          margin-top: 8px;
-          display: flex;
+        .two-column-dashboard-grid {
+          display: grid;
+          gap: 16px;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         }
 
-        .metric-card-action-row .secondary-button {
-          width: 100%;
-          justify-content: center;
+        .admin-dashboard-toolbar {
+          gap: 16px;
+        }
+
+        .section-title {
+          margin: 0;
+          font-size: 1.3rem;
+          line-height: 1.2;
+        }
+
+        .quick-action-grid {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .context-chip-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .context-action-column {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: flex-end;
+        }
+
+        .table-action-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .admin-context-meta-grid {
+          display: grid;
+          gap: 16px;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        .admin-context-meta-card {
+          border: 1px solid var(--border);
+          background: var(--surface-soft);
+          border-radius: 14px;
+          padding: 14px;
+          display: grid;
+          gap: 8px;
         }
       `}</style>
     </div>

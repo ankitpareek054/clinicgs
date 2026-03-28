@@ -1,4 +1,3 @@
-
 "use client";
 
 
@@ -45,7 +44,7 @@ const EMPTY_FORM = {
 
 function canUseClinicProfilePage(user) {
 
-  return user?.role === "owner";
+  return user?.role === "owner" || user?.role === "super_admin";
 
 }
 
@@ -125,15 +124,15 @@ function buildFormFromClinic(clinic) {
 
     name: clinic?.name || "",
 
-    clinicType: clinic?.clinicType || "",
+    clinicType: clinic?.clinicType || clinic?.clinic_type || "",
 
     phone: clinic?.phone || "",
 
     email: clinic?.email || "",
 
-    addressLine1: clinic?.addressLine1 || "",
+    addressLine1: clinic?.addressLine1 || clinic?.address_line_1 || "",
 
-    addressLine2: clinic?.addressLine2 || "",
+    addressLine2: clinic?.addressLine2 || clinic?.address_line_2 || "",
 
     city: clinic?.city || "",
 
@@ -179,11 +178,127 @@ function normalizeFormForCompare(form) {
 
 
 
+function getClinicTargetId(user, selectedAdminClinic) {
+
+  if (user?.role === "super_admin") {
+
+    return selectedAdminClinic?.id ?? null;
+
+  }
+
+
+
+  if (user?.role === "owner") {
+
+    return user?.clinicId ?? null;
+
+  }
+
+
+
+  return null;
+
+}
+
+
+
+function getWorkspaceCopy(user, selectedAdminClinic) {
+
+  if (user?.role === "super_admin") {
+
+    return {
+
+      label: "Super admin selected-clinic workspace",
+
+      description: selectedAdminClinic?.name
+
+        ? `Review and update profile details for ${selectedAdminClinic.name}.`
+
+        : "Review and update profile details for the currently selected clinic.",
+
+      loadingDescription:
+
+        "Checking super-admin clinic context and preparing clinic profile controls.",
+
+    };
+
+  }
+
+
+
+  return {
+
+    label: "Owner workspace",
+
+    description:
+
+      "Review and update your clinic’s main identity and contact details.",
+
+    loadingDescription:
+
+      "Checking your session and preparing the clinic profile.",
+
+  };
+
+}
+
+
+
+function buildAdminClinicContext(clinic) {
+
+  if (!clinic || typeof clinic !== "object") {
+
+    return null;
+
+  }
+
+
+
+  const id = clinic.id ?? clinic.clinic_id ?? clinic.clinicId ?? null;
+
+
+
+  if (!id) {
+
+    return null;
+
+  }
+
+
+
+  return {
+
+    id,
+
+    name: clinic.name || clinic.clinic_name || clinic.clinicName || "",
+
+    status: clinic.status || "",
+
+    city: clinic.city || "",
+
+  };
+
+}
+
+
+
 export default function ClinicProfilePage() {
 
   const router = useRouter();
 
-  const { user, isBootstrapping } = useAuth();
+  const {
+
+    user,
+
+    isBootstrapping,
+
+    selectedAdminClinic = null,
+
+    setAdminClinic,
+
+    clearAdminClinic,
+
+  } = useAuth();
 
 
 
@@ -207,19 +322,27 @@ export default function ClinicProfilePage() {
 
 
 
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const targetClinicId = getClinicTargetId(user, selectedAdminClinic);
+
+
+
+  const safeSetAdminClinic =
+
+    typeof setAdminClinic === "function" ? setAdminClinic : () => null;
+
+
+
+  const safeClearAdminClinic =
+
+    typeof clearAdminClinic === "function" ? clearAdminClinic : () => {};
+
+
+
   useEffect(() => {
 
-    if (
-
-      !isBootstrapping &&
-
-      user &&
-
-      !canUseClinicProfilePage(user) &&
-
-      user.role !== "super_admin"
-
-    ) {
+    if (!isBootstrapping && user && !canUseClinicProfilePage(user)) {
 
       router.replace(isOwnerLike(user) ? "/dashboard" : "/my-tasks");
 
@@ -229,13 +352,17 @@ export default function ClinicProfilePage() {
 
 
 
-  const showSuperAdminPlaceholder = user?.role === "super_admin";
-
-
-
   const loadClinic = useCallback(async () => {
 
-    if (!user?.clinicId || !canUseClinicProfilePage(user) || showSuperAdminPlaceholder) {
+    if (!user || !targetClinicId || !canUseClinicProfilePage(user)) {
+
+      setClinic(null);
+
+      setForm(EMPTY_FORM);
+
+      setIsEditing(false);
+
+      setIsLoading(false);
 
       return;
 
@@ -247,13 +374,11 @@ export default function ClinicProfilePage() {
 
       setError("");
 
-      setNotice("");
-
       setIsLoading(true);
 
 
 
-      const payload = await api.get(`/clinics/${user.clinicId}`);
+      const payload = await api.get(`/clinics/${targetClinicId}`);
 
       const data = extractApiData(payload, null);
 
@@ -265,7 +390,25 @@ export default function ClinicProfilePage() {
 
       setIsEditing(false);
 
+
+
+      if (isSuperAdmin && data) {
+
+        const nextContext = buildAdminClinicContext(data);
+
+        if (nextContext) {
+
+          safeSetAdminClinic(nextContext);
+
+        }
+
+      }
+
     } catch (err) {
+
+      setClinic(null);
+
+      setForm(EMPTY_FORM);
 
       setError(err?.message || "Could not load clinic profile.");
 
@@ -275,19 +418,43 @@ export default function ClinicProfilePage() {
 
     }
 
-  }, [showSuperAdminPlaceholder, user]);
+  }, [isSuperAdmin, safeSetAdminClinic, targetClinicId, user]);
 
 
 
   useEffect(() => {
 
-    if (!isBootstrapping && user && canUseClinicProfilePage(user) && !showSuperAdminPlaceholder) {
+    if (!isBootstrapping && user && canUseClinicProfilePage(user)) {
+
+      if (isSuperAdmin && !targetClinicId) {
+
+        setClinic(null);
+
+        setForm(EMPTY_FORM);
+
+        setIsEditing(false);
+
+        setIsLoading(false);
+
+        return;
+
+      }
+
+
 
       loadClinic();
 
     }
 
-  }, [isBootstrapping, loadClinic, showSuperAdminPlaceholder, user]);
+  }, [isBootstrapping, isSuperAdmin, loadClinic, targetClinicId, user]);
+
+
+
+  const workspaceCopy = useMemo(() => {
+
+    return getWorkspaceCopy(user, selectedAdminClinic);
+
+  }, [selectedAdminClinic, user]);
 
 
 
@@ -302,6 +469,8 @@ export default function ClinicProfilePage() {
       createdAt: formatDateTime(clinic?.createdAt),
 
       updatedAt: formatDateTime(clinic?.updatedAt),
+
+      deactivatedAt: formatDateTime(clinic?.deactivatedAt),
 
     };
 
@@ -371,13 +540,23 @@ export default function ClinicProfilePage() {
 
 
 
+  function handleClearClinicContext() {
+
+    safeClearAdminClinic();
+
+    router.replace("/dashboard");
+
+  }
+
+
+
   async function handleSubmit(event) {
 
     event.preventDefault();
 
 
 
-    if (!isEditing || !hasChanges) {
+    if (!isEditing || !hasChanges || !targetClinicId) {
 
       return;
 
@@ -421,7 +600,7 @@ export default function ClinicProfilePage() {
 
 
 
-      const response = await api.patch(`/clinics/${user.clinicId}/profile`, payload);
+      const response = await api.patch(`/clinics/${targetClinicId}/profile`, payload);
 
       const updatedClinic = extractApiData(response, null);
 
@@ -434,6 +613,20 @@ export default function ClinicProfilePage() {
       setIsEditing(false);
 
       setNotice("Clinic profile updated successfully.");
+
+
+
+      if (isSuperAdmin && updatedClinic) {
+
+        const nextContext = buildAdminClinicContext(updatedClinic);
+
+        if (nextContext) {
+
+          safeSetAdminClinic(nextContext);
+
+        }
+
+      }
 
     } catch (err) {
 
@@ -457,17 +650,33 @@ export default function ClinicProfilePage() {
 
         title="Loading clinic profile"
 
-        description="Checking your session and preparing the clinic profile."
+        description={workspaceCopy.loadingDescription}
 
-        points={[
+        points={
 
-          "Verifying owner access",
+          isSuperAdmin
 
-          "Loading clinic details",
+            ? [
 
-          "Preparing profile controls",
+                "Verifying super-admin access",
 
-        ]}
+                "Checking selected clinic context",
+
+                "Preparing clinic profile controls",
+
+              ]
+
+            : [
+
+                "Verifying owner access",
+
+                "Loading clinic details",
+
+                "Preparing profile controls",
+
+              ]
+
+        }
 
       />
 
@@ -485,23 +694,23 @@ export default function ClinicProfilePage() {
 
 
 
-  if (showSuperAdminPlaceholder) {
+  if (!canUseClinicProfilePage(user)) {
 
     return (
 
       <PagePlaceholder
 
-        title="Super admin clinic tools stay separate"
+        title="Access restricted"
 
-        description="This page is for clinic owners updating their clinic profile. Super admin clinic management should stay in a separate admin workspace."
+        description="Clinic Profile is available only to clinic owners and super admin."
 
         points={[
 
-          "Owners manage their clinic profile here",
+          "Owners manage their own clinic profile here",
 
-          "Super admin keeps platform-wide controls elsewhere",
+          "Super admin manages the selected clinic context here",
 
-          "This avoids mixing clinic and admin workflows",
+          "Receptionists stay focused on operational workflows",
 
         ]}
 
@@ -513,23 +722,23 @@ export default function ClinicProfilePage() {
 
 
 
-  if (!canUseClinicProfilePage(user)) {
+  if (isSuperAdmin && !targetClinicId) {
 
     return (
 
       <PagePlaceholder
 
-        title="Owner-only page"
+        title="Choose a clinic first"
 
-        description="Clinic Profile is currently available only to clinic owners."
+        description="Open Clinics Hub, select a clinic, and set it as the active admin context before using Clinic Profile."
 
         points={[
 
-          "Owners manage clinic identity here",
+          "Go to Clinics from the sidebar",
 
-          "Receptionists stay focused on operations",
+          "Choose the clinic you want to manage",
 
-          "Clinic profile remains owner-controlled",
+          "Use clinic context and then return here",
 
         ]}
 
@@ -551,15 +760,11 @@ export default function ClinicProfilePage() {
 
           <div className="stack-sm">
 
-            <span className="small-label">Owner workspace</span>
+            <span className="small-label">{workspaceCopy.label}</span>
 
             <h1>Clinic Profile</h1>
 
-            <p className="clinic-profile-subtle">
-
-              Review and update your clinic’s main identity and contact details.
-
-            </p>
+            <p className="clinic-profile-subtle">{workspaceCopy.description}</p>
 
           </div>
 
@@ -578,6 +783,90 @@ export default function ClinicProfilePage() {
         </div>
 
       )}
+
+
+
+      {isSuperAdmin ? (
+
+        <section className="page-card stack-sm">
+
+          <div className="stack-sm">
+
+            <span className="small-label">Admin clinic context</span>
+
+            <strong className="clinic-context-title">
+
+              {selectedAdminClinic?.name || "Selected clinic"}
+
+            </strong>
+
+            <p className="clinic-profile-subtle">
+
+              This page is editing the currently selected clinic workspace. Clear the
+
+              context to return to platform-wide mode.
+
+            </p>
+
+          </div>
+
+
+
+          <div className="clinic-context-actions">
+
+            <button
+
+              type="button"
+
+              className="secondary-button compact-button"
+
+              onClick={() => router.push("/clinic-settings")}
+
+            >
+
+              Open clinic settings
+
+            </button>
+
+
+
+            <button
+
+              type="button"
+
+              className="secondary-button compact-button"
+
+              onClick={() => router.push("/staff")}
+
+            >
+
+              Open clinic staff
+
+            </button>
+
+
+
+            <button
+
+              type="button"
+
+              className="secondary-button compact-button"
+
+              onClick={handleClearClinicContext}
+
+              disabled={isSaving}
+
+            >
+
+              Clear selected clinic
+
+            </button>
+
+          </div>
+
+        </section>
+
+      ) : null}
 
 
 
@@ -611,7 +900,7 @@ export default function ClinicProfilePage() {
 
                 <p className="clinic-profile-subtle">
 
-                  These details define how your clinic appears across the product.
+                  These details define how this clinic appears across the product.
 
                 </p>
 
@@ -1005,6 +1294,14 @@ export default function ClinicProfilePage() {
 
               </p>
 
+
+
+              <p>
+
+                <strong>Deactivated at:</strong> {profileStats.deactivatedAt}
+
+              </p>
+
             </div>
 
           </section>
@@ -1033,7 +1330,9 @@ export default function ClinicProfilePage() {
 
         .clinic-profile-header-row,
 
-        .clinic-profile-card-header {
+        .clinic-profile-card-header,
+
+        .clinic-context-actions {
 
           display: flex;
 
@@ -1054,6 +1353,16 @@ export default function ClinicProfilePage() {
           margin: 0;
 
           color: var(--muted);
+
+        }
+
+
+
+        .clinic-context-title {
+
+          color: var(--text);
+
+          line-height: 1.3;
 
         }
 
@@ -1250,3 +1559,4 @@ export default function ClinicProfilePage() {
   );
 
 }
+
