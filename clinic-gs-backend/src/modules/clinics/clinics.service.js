@@ -5,6 +5,7 @@ const { slugify } = require('../../utils/slug');
 const { generateInviteToken, hashInviteToken } = require('../../utils/invite-token');
 const env = require('../../config/env');
 const { ROLES } = require('../../config/constants');
+const { sendInviteEmail } = require('../../services/providers/email.provider');
 const clinicsRepository = require('./clinics.repository');
 
 function buildClinicResponse(row) {
@@ -30,6 +31,35 @@ function buildClinicResponse(row) {
   };
 }
 
+function buildOwnerResponse(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    clinicId: row.clinic_id,
+    fullName: row.full_name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    mustResetPassword: row.must_reset_password,
+    createdAt: row.created_at,
+  };
+}
+
+function buildInviteResponse(row, rawInviteToken = null) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    status: row.invite_status,
+    expiresAt: row.expires_at,
+    sentAt: row.sent_at,
+    rawTokenPreview: env.NODE_ENV === 'development' ? rawInviteToken : undefined,
+  };
+}
+
 async function ensureUniqueSlug(name) {
   const baseSlug = slugify(name);
   const firstTry = baseSlug || `clinic-${Date.now()}`;
@@ -38,6 +68,39 @@ async function ensureUniqueSlug(name) {
   if (!existing) return firstTry;
 
   return `${firstTry}-${Date.now()}`;
+}
+
+async function deliverInviteAndTrack({
+  inviteId,
+  to,
+  clinicName,
+  role,
+  rawInviteToken,
+  invitedByName,
+}) {
+  const inviteDelivery = await sendInviteEmail({
+    to,
+    clinicName,
+    role,
+    inviteToken: rawInviteToken,
+    invitedByName,
+  });
+
+  let trackedInvite = null;
+
+  if (inviteDelivery?.status === 'sent') {
+    try {
+      trackedInvite = await clinicsRepository.markUserInviteSent(inviteId);
+    } catch (error) {
+      inviteDelivery.trackingWarning = 'Email was sent, but sent_at could not be updated.';
+      inviteDelivery.trackingError = error.message || 'INVITE_SENT_TRACKING_FAILED';
+    }
+  }
+
+  return {
+    inviteDelivery,
+    trackedInvite,
+  };
 }
 
 async function listClinics(filters, currentUser) {
@@ -79,7 +142,7 @@ async function createClinic(input, currentUser) {
   const temporaryPassword = crypto.randomBytes(12).toString('hex');
   const expiresAt = new Date(Date.now() + env.INVITE_TOKEN_EXPIRES_HOURS * 60 * 60 * 1000);
 
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const clinic = await clinicsRepository.createClinic(
       {
         name: input.name,
@@ -134,25 +197,9 @@ async function createClinic(input, currentUser) {
 
     return {
       clinic: buildClinicResponse(clinic),
-      owner: {
-        id: owner.id,
-        clinicId: owner.clinic_id,
-        fullName: owner.full_name,
-        email: owner.email,
-        role: owner.role,
-        status: owner.status,
-        mustResetPassword: owner.must_reset_password,
-        createdAt: owner.created_at,
-      },
-      invite: {
-        id: invite.id,
-        email: invite.email,
-        role: invite.role,
-        status: invite.invite_status,
-        expiresAt: invite.expires_at,
-        sentAt: invite.sent_at,
-        rawTokenPreview: env.NODE_ENV === 'development' ? rawInviteToken : undefined,
-      },
+      owner: buildOwnerResponse(owner),
+      invite: buildInviteResponse(invite, rawInviteToken),
+      rawInviteToken,
       publicForm: {
         id: publicForm.id,
         clinicId: publicForm.clinic_id,
@@ -164,6 +211,23 @@ async function createClinic(input, currentUser) {
       },
     };
   });
+
+  const delivery = await deliverInviteAndTrack({
+    inviteId: result.invite.id,
+    to: input.ownerEmail,
+    clinicName: result.clinic.name,
+    role: 'owner',
+    rawInviteToken,
+    invitedByName: currentUser.fullName || currentUser.email || 'ClinicGS',
+  });
+
+  return {
+    clinic: result.clinic,
+    owner: result.owner,
+    invite: buildInviteResponse(delivery.trackedInvite || result.invite, rawInviteToken),
+    publicForm: result.publicForm,
+    inviteDelivery: delivery.inviteDelivery,
+  };
 }
 
 async function updateClinicProfile(clinicId, updates, currentUser) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getDefaultAppPath } from "../../../lib/auth/auth";
@@ -9,12 +10,22 @@ import ThemeToggle from "../../../components/shared/themeToggle";
 const demoAccounts = [
   { label: "Super Admin", email: "super@gamil.com", password: "Ankit@1234" },
   { label: "Owner", email: "owner@gamil.com", password: "Ankit@1234" },
-  { label: "Receptionist", email: "receptionist@gamil.com", password: "Ankit@1234" },
+  {
+    label: "Receptionist",
+    email: "receptionist@gamil.com",
+    password: "Ankit@1234",
+  },
 ];
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, user, isAuthenticated, isBootstrapping, error: sessionError } = useAuth();
+  const {
+    login,
+    user,
+    isAuthenticated,
+    isBootstrapping,
+    error: sessionError,
+  } = useAuth();
 
   const [form, setForm] = useState({
     email: "receptionist@gamil.com",
@@ -50,6 +61,7 @@ export default function LoginPage() {
       email: account.email,
       password: account.password,
     });
+    setPageError("");
   }
 
   if (isBootstrapping) {
@@ -79,7 +91,8 @@ export default function LoginPage() {
             <span className="eyebrow">Clinic operations</span>
             <h1>Welcome back</h1>
             <p className="muted">
-              Login to manage leads, follow-ups, and appointments from one place.
+              Login to manage leads, follow-ups, and appointments from one
+              place.
             </p>
           </div>
 
@@ -96,27 +109,50 @@ export default function LoginPage() {
                 autoComplete="email"
                 value={form.email}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, email: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
                 }
                 required
               />
             </div>
 
             <div className="field">
-              <label htmlFor="password">Password</label>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                }}
+              >
+                <label htmlFor="password">Password</label>
+                <Link href="/forgot-password" className="text-link">
+                  Forgot password?
+                </Link>
+              </div>
+
               <input
                 id="password"
                 type="password"
                 autoComplete="current-password"
                 value={form.password}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, password: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
                 }
                 required
               />
             </div>
 
-            <button type="submit" className="primary-button" disabled={isSubmitting}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? "Logging in…" : "Login"}
             </button>
           </form>

@@ -1,3 +1,4 @@
+
 const db = require('../../db');
 
 async function findClinicById(clinicId, client = null) {
@@ -185,7 +186,6 @@ async function createUserInvite(input, client) {
       token_hash,
       invite_status,
       expires_at,
-      sent_at,
       created_by_user_id
     )
     VALUES (
@@ -196,7 +196,6 @@ async function createUserInvite(input, client) {
       $5,
       'pending',
       $6,
-      NOW(),
       $7
     )
     RETURNING
@@ -240,6 +239,29 @@ async function createDefaultClinicSettings(clinicId, client) {
 
   const result = await db.query(query, [clinicId], client);
   return result.rows[0];
+}
+
+async function markUserInviteSent(inviteId, client = null) {
+  const query = `
+    UPDATE user_invites
+    SET sent_at = NOW()
+    WHERE id = $1
+    RETURNING
+      id,
+      clinic_id,
+      user_id,
+      email::text AS email,
+      role,
+      invite_status,
+      expires_at,
+      sent_at,
+      used_at,
+      created_by_user_id,
+      created_at
+  `;
+
+  const result = await db.query(query, [inviteId], client);
+  return result.rows[0] || null;
 }
 
 async function createDefaultClinicIntegration(clinicId, ownerEmail, client) {
@@ -413,4 +435,5 @@ module.exports = {
   createDefaultMessageTemplates,
   updateClinicProfile,
   updateClinicStatus,
+  markUserInviteSent,
 };

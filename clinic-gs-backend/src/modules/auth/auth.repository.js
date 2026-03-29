@@ -45,7 +45,7 @@ async function verifyUserCredentials(email, password) {
   return sanitizeUserRow(result.rows[0] || null);
 }
 
-async function findUserSessionById(userId) {
+async function findUserSessionById(userId, client = null) {
   const query = `
     SELECT
       u.id,
@@ -66,14 +66,41 @@ async function findUserSessionById(userId) {
     LIMIT 1
   `;
 
-  const result = await db.query(query, [userId]);
+  const result = await db.query(query, [userId], client);
+  return sanitizeUserRow(result.rows[0] || null);
+}
+
+async function findUserByEmail(email, client = null) {
+  const query = `
+    SELECT
+      u.id,
+      u.clinic_id,
+      c.name AS clinic_name,
+      u.full_name,
+      u.email::text AS email,
+      u.phone,
+      u.role,
+      u.status,
+      u.must_reset_password,
+      u.last_login_at,
+      u.created_at,
+      u.updated_at
+    FROM users u
+    LEFT JOIN clinics c ON c.id = u.clinic_id
+    WHERE lower(u.email::text) = lower($1)
+    LIMIT 1
+  `;
+
+  const result = await db.query(query, [email], client);
   return sanitizeUserRow(result.rows[0] || null);
 }
 
 async function touchLastLogin(userId, client = null) {
   const query = `
     UPDATE users
-    SET last_login_at = NOW()
+    SET
+      last_login_at = NOW(),
+      updated_at = NOW()
     WHERE id = $1
   `;
 
@@ -136,6 +163,32 @@ async function activateInvitedUser(userId, password, client) {
   return sanitizeUserRow(result.rows[0] || null);
 }
 
+async function updateUserPassword(userId, password, client) {
+  const query = `
+    UPDATE users
+    SET
+      password_hash = crypt($2, gen_salt('bf')),
+      must_reset_password = FALSE,
+      updated_at = NOW()
+    WHERE id = $1
+    RETURNING
+      id,
+      clinic_id,
+      full_name,
+      email::text AS email,
+      phone,
+      role,
+      status,
+      must_reset_password,
+      last_login_at,
+      created_at,
+      updated_at
+  `;
+
+  const result = await db.query(query, [userId, password], client);
+  return sanitizeUserRow(result.rows[0] || null);
+}
+
 async function markInviteAccepted(inviteId, client) {
   const query = `
     UPDATE user_invites
@@ -148,11 +201,121 @@ async function markInviteAccepted(inviteId, client) {
   return db.query(query, [inviteId], client);
 }
 
+async function createPasswordResetToken({ userId, tokenHash, expiresAt }, client) {
+  const query = `
+    INSERT INTO password_reset_tokens (
+      user_id,
+      token_hash,
+      reset_status,
+      expires_at
+    )
+    VALUES ($1, $2, 'pending', $3)
+    RETURNING
+      id,
+      user_id,
+      token_hash,
+      reset_status,
+      expires_at,
+      used_at,
+      revoked_at,
+      created_at
+  `;
+
+  const result = await db.query(query, [userId, tokenHash, expiresAt], client);
+  return result.rows[0] || null;
+}
+
+async function findPasswordResetTokenByHash(tokenHash, client = null) {
+  const query = `
+    SELECT
+      prt.id,
+      prt.user_id,
+      prt.token_hash,
+      prt.reset_status,
+      prt.expires_at,
+      prt.used_at,
+      prt.revoked_at,
+      prt.created_at,
+      u.status AS user_status,
+      u.email::text AS email,
+      u.full_name
+    FROM password_reset_tokens prt
+    INNER JOIN users u ON u.id = prt.user_id
+    WHERE prt.token_hash = $1
+    LIMIT 1
+  `;
+
+  const result = await db.query(query, [tokenHash], client);
+  return result.rows[0] || null;
+}
+
+async function revokeActivePasswordResetTokensForUser(userId, client) {
+  const query = `
+    UPDATE password_reset_tokens
+    SET
+      reset_status = 'revoked',
+      revoked_at = NOW()
+    WHERE user_id = $1
+      AND reset_status = 'pending'
+      AND used_at IS NULL
+      AND revoked_at IS NULL
+  `;
+
+  return db.query(query, [userId], client);
+}
+
+async function revokeOtherActivePasswordResetTokensForUser(userId, keepTokenId, client) {
+  const query = `
+    UPDATE password_reset_tokens
+    SET
+      reset_status = 'revoked',
+      revoked_at = NOW()
+    WHERE user_id = $1
+      AND id <> $2
+      AND reset_status = 'pending'
+      AND used_at IS NULL
+      AND revoked_at IS NULL
+  `;
+
+  return db.query(query, [userId, keepTokenId], client);
+}
+
+async function markPasswordResetTokenUsed(tokenId, client) {
+  const query = `
+    UPDATE password_reset_tokens
+    SET
+      reset_status = 'used',
+      used_at = NOW()
+    WHERE id = $1
+  `;
+
+  return db.query(query, [tokenId], client);
+}
+
+async function markPasswordResetTokenExpired(tokenId, client) {
+  const query = `
+    UPDATE password_reset_tokens
+    SET
+      reset_status = 'expired'
+    WHERE id = $1
+  `;
+
+  return db.query(query, [tokenId], client);
+}
+
 module.exports = {
   verifyUserCredentials,
   findUserSessionById,
+  findUserByEmail,
   touchLastLogin,
   findInviteByTokenHash,
   activateInvitedUser,
+  updateUserPassword,
   markInviteAccepted,
+  createPasswordResetToken,
+  findPasswordResetTokenByHash,
+  revokeActivePasswordResetTokensForUser,
+  revokeOtherActivePasswordResetTokensForUser,
+  markPasswordResetTokenUsed,
+  markPasswordResetTokenExpired,
 };

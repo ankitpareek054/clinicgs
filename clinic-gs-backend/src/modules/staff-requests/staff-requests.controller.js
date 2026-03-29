@@ -33,8 +33,18 @@ async function decideRequest(req, res) {
   });
 }
 
+async function resendInvite(req, res) {
+  const data = await staffRequestsService.resendInvite(req.body, req.user);
+
+  return sendSuccess(res, {
+    message: 'Invite resent successfully.',
+    data,
+  });
+}
+
 module.exports = {
   listRequests,
   createRequest,
   decideRequest,
+  resendInvite,
 };

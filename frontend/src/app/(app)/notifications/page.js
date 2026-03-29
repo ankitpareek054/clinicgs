@@ -81,13 +81,13 @@ function getClinicSelectionFromNotification(notification) {
 
 function getNotificationTarget(notification, user) {
   const entityType = String(
-    notification?.entityType || notification?.entity_type || ""
+    notification?.entityType || notification?.entity_type || "",
   )
     .trim()
     .toLowerCase();
 
   const notificationType = String(
-    notification?.notificationType || notification?.notification_type || ""
+    notification?.notificationType || notification?.notification_type || "",
   )
     .trim()
     .toLowerCase();
@@ -107,6 +107,7 @@ function getNotificationTarget(notification, user) {
       href: "/support",
       label: "Open support",
       requiresClinicContext: false,
+      clearsClinicContext: isSuperAdmin,
       clinicSelection: null,
     };
   }
@@ -125,6 +126,7 @@ function getNotificationTarget(notification, user) {
       href: "/staff-requests",
       label: "Open staff requests",
       requiresClinicContext: false,
+      clearsClinicContext: isSuperAdmin,
       clinicSelection: null,
     };
   }
@@ -142,6 +144,7 @@ function getNotificationTarget(notification, user) {
       href: "/clinic-profile",
       label: "Open clinic profile",
       requiresClinicContext: isSuperAdmin,
+      clearsClinicContext: false,
       clinicSelection,
     };
   }
@@ -159,6 +162,7 @@ function getNotificationTarget(notification, user) {
       href: "/clinic-settings",
       label: "Open clinic settings",
       requiresClinicContext: isSuperAdmin,
+      clearsClinicContext: false,
       clinicSelection,
     };
   }
@@ -170,14 +174,15 @@ function getNotificationTarget(notification, user) {
     notificationType.includes("sync") ||
     notificationType.includes("calendar")
   ) {
-    if (!isOwnerLike(user)) {
+    if (!isSuperAdmin) {
       return null;
     }
 
     return {
       href: "/integrations",
       label: "Open integrations",
-      requiresClinicContext: isSuperAdmin,
+      requiresClinicContext: true,
+      clearsClinicContext: false,
       clinicSelection,
     };
   }
@@ -196,6 +201,7 @@ function getNotificationTarget(notification, user) {
       href: "/staff",
       label: "Open staff",
       requiresClinicContext: isSuperAdmin,
+      clearsClinicContext: false,
       clinicSelection,
     };
   }
@@ -209,6 +215,7 @@ function getNotificationTarget(notification, user) {
       href: isReceptionist ? "/my-tasks" : "/dashboard",
       label: isReceptionist ? "Open my tasks" : "Open dashboard",
       requiresClinicContext: false,
+      clearsClinicContext: isSuperAdmin,
       clinicSelection: null,
     };
   }
@@ -222,6 +229,7 @@ function getNotificationTarget(notification, user) {
       href: "/leads",
       label: "Open leads",
       requiresClinicContext: false,
+      clearsClinicContext: false,
       clinicSelection: null,
     };
   }
@@ -231,6 +239,7 @@ function getNotificationTarget(notification, user) {
       href: "/appointments",
       label: "Open appointments",
       requiresClinicContext: false,
+      clearsClinicContext: false,
       clinicSelection: null,
     };
   }
@@ -244,6 +253,7 @@ function getNotificationTarget(notification, user) {
       href: "/followups",
       label: "Open follow-ups",
       requiresClinicContext: false,
+      clearsClinicContext: false,
       clinicSelection: null,
     };
   }
@@ -284,11 +294,7 @@ function getWorkspaceCopy(user) {
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const {
-    user,
-    isBootstrapping,
-    setAdminClinic,
-  } = useAuth();
+  const { user, isBootstrapping, setAdminClinic, clearAdminClinic } = useAuth();
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -303,6 +309,9 @@ export default function NotificationsPage() {
 
   const safeSetAdminClinic =
     typeof setAdminClinic === "function" ? setAdminClinic : () => null;
+
+  const safeClearAdminClinic =
+    typeof clearAdminClinic === "function" ? clearAdminClinic : () => {};
 
   useEffect(() => {
     if (!isBootstrapping && !user) {
@@ -358,7 +367,9 @@ export default function NotificationsPage() {
         const notificationData = extractApiData(notificationsPayload, []);
         const unreadData = extractApiData(unreadPayload, { unreadCount: 0 });
 
-        setNotifications(Array.isArray(notificationData) ? notificationData : []);
+        setNotifications(
+          Array.isArray(notificationData) ? notificationData : [],
+        );
         setUnreadCount(Number(unreadData?.unreadCount) || 0);
       } catch (err) {
         setError(err?.message || "Could not load notifications.");
@@ -367,7 +378,7 @@ export default function NotificationsPage() {
         setIsRefreshing(false);
       }
     },
-    [user]
+    [user],
   );
 
   useEffect(() => {
@@ -378,7 +389,7 @@ export default function NotificationsPage() {
 
   async function handleMarkAsRead(notificationId) {
     const target = notifications.find(
-      (notification) => Number(notification.id) === Number(notificationId)
+      (notification) => Number(notification.id) === Number(notificationId),
     );
 
     if (!target || target.isRead) {
@@ -402,8 +413,8 @@ export default function NotificationsPage() {
                 isRead: true,
                 readAt: new Date().toISOString(),
               }
-            : notification
-        )
+            : notification,
+        ),
       );
 
       setNotice("Notification marked as read.");
@@ -430,14 +441,14 @@ export default function NotificationsPage() {
           ...notification,
           isRead: true,
           readAt: notification.readAt || new Date().toISOString(),
-        }))
+        })),
       );
 
       if (updatedCount > 0) {
         setNotice(
           `Marked ${updatedCount} notification${
             updatedCount === 1 ? "" : "s"
-          } as read.`
+          } as read.`,
         );
       } else {
         setNotice("Everything is already up to date.");
@@ -462,7 +473,7 @@ export default function NotificationsPage() {
       !target.clinicSelection
     ) {
       setError(
-        "This notification does not include clinic context, so the related clinic workspace cannot be opened safely yet."
+        "This notification does not include clinic context, so the related clinic workspace cannot be opened safely yet.",
       );
       setNotice("");
       return;
@@ -472,6 +483,10 @@ export default function NotificationsPage() {
       setBusyNavigationId(notification.id);
       setError("");
       setNotice("");
+
+      if (target.clearsClinicContext && user?.role === "super_admin") {
+        safeClearAdminClinic();
+      }
 
       if (
         target.requiresClinicContext &&
@@ -540,16 +555,15 @@ export default function NotificationsPage() {
           <span className="small-label">Loaded now</span>
           <strong>{visibleNotifications.length}</strong>
           <p className="muted">
-            Items shown in the current {activeFilter === "unread" ? "unread" : "all"} view.
+            Items shown in the current{" "}
+            {activeFilter === "unread" ? "unread" : "all"} view.
           </p>
         </article>
 
         <article className="metric-card">
           <span className="small-label">Read</span>
           <strong>{readCount}</strong>
-          <p className="muted">
-            Notifications already cleared in this inbox.
-          </p>
+          <p className="muted">Notifications already cleared in this inbox.</p>
         </article>
       </section>
 
@@ -595,7 +609,9 @@ export default function NotificationsPage() {
               type="button"
               className="secondary-button compact-button"
               onClick={handleMarkAllAsRead}
-              disabled={isLoading || isRefreshing || isMarkingAll || unreadCount === 0}
+              disabled={
+                isLoading || isRefreshing || isMarkingAll || unreadCount === 0
+              }
             >
               {isMarkingAll ? "Marking..." : "Mark all as read"}
             </button>
@@ -618,7 +634,8 @@ export default function NotificationsPage() {
       ) : (
         <section className="stack">
           {visibleNotifications.map((notification) => {
-            const isBusy = Number(busyNotificationId) === Number(notification.id);
+            const isBusy =
+              Number(busyNotificationId) === Number(notification.id);
             const isNavigationBusy =
               Number(busyNavigationId) === Number(notification.id);
             const target = getNotificationTarget(notification, user);
@@ -631,7 +648,9 @@ export default function NotificationsPage() {
               <article
                 key={notification.id}
                 className={`page-card notification-card ${
-                  notification.isRead ? "notification-card-read" : "notification-card-unread"
+                  notification.isRead
+                    ? "notification-card-read"
+                    : "notification-card-unread"
                 }`}
               >
                 <div className="notification-main">
@@ -640,14 +659,15 @@ export default function NotificationsPage() {
                       <span className="small-label">
                         {humanizeToken(
                           notification.notificationType,
-                          "Notification"
+                          "Notification",
                         )}
                       </span>
 
                       <div className="notification-pill-row">
                         {notification.clinicName || notification.clinic_name ? (
                           <span className="status-pill">
-                            {notification.clinicName || notification.clinic_name}
+                            {notification.clinicName ||
+                              notification.clinic_name}
                           </span>
                         ) : null}
 
@@ -672,7 +692,9 @@ export default function NotificationsPage() {
 
                     <div className="notification-meta">
                       <span>{getEntityMeta(notification)}</span>
-                      <span>Created {formatDateTime(notification.createdAt)}</span>
+                      <span>
+                        Created {formatDateTime(notification.createdAt)}
+                      </span>
                       {notification.readAt ? (
                         <span>Read {formatDateTime(notification.readAt)}</span>
                       ) : null}
@@ -681,8 +703,8 @@ export default function NotificationsPage() {
                     {isTargetBlocked ? (
                       <p className="muted notification-link-hint">
                         This alert points to a clinic-scoped admin page, but the
-                        notification payload does not include enough clinic context
-                        to open that workspace safely.
+                        notification payload does not include enough clinic
+                        context to open that workspace safely.
                       </p>
                     ) : null}
                   </div>
@@ -693,7 +715,9 @@ export default function NotificationsPage() {
                         type="button"
                         className="secondary-button compact-button"
                         onClick={() => handleOpenTarget(notification)}
-                        disabled={isNavigationBusy || isMarkingAll || isTargetBlocked}
+                        disabled={
+                          isNavigationBusy || isMarkingAll || isTargetBlocked
+                        }
                       >
                         {isNavigationBusy ? "Opening..." : target.label}
                       </button>

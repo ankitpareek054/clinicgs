@@ -1,9 +1,10 @@
 const { withTransaction } = require('../../db/transaction');
 const ApiError = require('../../utils/api-error');
 const { signAuthToken } = require('../../utils/jwt');
-const { hashInviteToken } = require('../../utils/invite-token');
+const { generateInviteToken, hashInviteToken } = require('../../utils/invite-token');
 const { assertPasswordStrength } = require('../../utils/password');
 const authRepository = require('./auth.repository');
+const { sendPasswordResetEmail } = require('../../services/providers/email.provider');
 const { AUTH_MESSAGES, USER_STATUSES, INVITE_STATUSES } = require('../../config/constants');
 
 function buildAuthPayload(user) {
@@ -29,6 +30,11 @@ function buildSafeUser(user) {
     createdAt: user.created_at,
     updatedAt: user.updated_at,
   };
+}
+
+function getPasswordResetExpiryHours() {
+  const parsed = Number(process.env.PASSWORD_RESET_TOKEN_EXPIRES_HOURS || 2);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
 }
 
 async function login(input) {
@@ -145,7 +151,7 @@ async function acceptInvite(input) {
     await authRepository.markInviteAccepted(invite.id, client);
     await authRepository.touchLastLogin(user.id, client);
 
-    const finalUser = await authRepository.findUserSessionById(user.id);
+    const finalUser = await authRepository.findUserSessionById(user.id, client);
     const token = signAuthToken(buildAuthPayload(finalUser));
 
     return {
@@ -155,9 +161,117 @@ async function acceptInvite(input) {
   });
 }
 
+async function requestPasswordReset(input) {
+  const email = String(input.email || '').trim().toLowerCase();
+
+  if (!email) {
+    throw new ApiError(400, 'Email is required.', {
+      code: 'EMAIL_REQUIRED',
+    });
+  }
+
+  const user = await authRepository.findUserByEmail(email);
+
+  // Prevent account enumeration.
+  if (!user) {
+    return { success: true };
+  }
+
+  // Pending invites should use invite acceptance, not forgot password.
+  if (user.status === USER_STATUSES.PENDING_INVITE) {
+    return { success: true };
+  }
+
+  // Inactive users should not receive reset links.
+  if (user.status !== USER_STATUSES.ACTIVE) {
+    return { success: true };
+  }
+
+  const rawResetToken = generateInviteToken();
+  const tokenHash = hashInviteToken(rawResetToken);
+  const expiresAt = new Date(
+    Date.now() + getPasswordResetExpiryHours() * 60 * 60 * 1000
+  );
+
+  await withTransaction(async (client) => {
+    await authRepository.revokeActivePasswordResetTokensForUser(user.id, client);
+
+    await authRepository.createPasswordResetToken(
+      {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+      client
+    );
+  });
+
+  await sendPasswordResetEmail({
+    to: user.email,
+    fullName: user.full_name,
+    resetToken: rawResetToken,
+  });
+
+  return { success: true };
+}
+
+async function resetPassword(input) {
+  assertPasswordStrength(input.password);
+
+  return withTransaction(async (client) => {
+    const resetRecord = await authRepository.findPasswordResetTokenByHash(
+      hashInviteToken(input.token),
+      client
+    );
+
+    if (!resetRecord) {
+      throw new ApiError(400, 'Invalid or expired password reset token.', {
+        code: 'PASSWORD_RESET_INVALID',
+      });
+    }
+
+    if (resetRecord.reset_status !== 'pending') {
+      throw new ApiError(400, 'Password reset token is no longer valid.', {
+        code: 'PASSWORD_RESET_NOT_PENDING',
+      });
+    }
+
+    if (new Date(resetRecord.expires_at).getTime() < Date.now()) {
+      await authRepository.markPasswordResetTokenExpired(resetRecord.id, client);
+
+      throw new ApiError(400, 'Invalid or expired password reset token.', {
+        code: 'PASSWORD_RESET_EXPIRED',
+      });
+    }
+
+    if (resetRecord.user_status !== USER_STATUSES.ACTIVE) {
+      throw new ApiError(400, 'Password reset is not allowed for this account.', {
+        code: 'PASSWORD_RESET_ACCOUNT_INVALID',
+      });
+    }
+
+    await authRepository.updateUserPassword(
+      resetRecord.user_id,
+      input.password,
+      client
+    );
+
+    await authRepository.markPasswordResetTokenUsed(resetRecord.id, client);
+    await authRepository.revokeOtherActivePasswordResetTokensForUser(
+      resetRecord.user_id,
+      resetRecord.id,
+      client
+    );
+
+    return { success: true };
+  });
+}
+
 module.exports = {
   login,
   getMe,
   getInviteByToken,
   acceptInvite,
+  requestPasswordReset,
+  resetPassword,
 };

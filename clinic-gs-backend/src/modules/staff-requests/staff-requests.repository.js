@@ -69,8 +69,10 @@ async function findRequestById(requestId, client = null) {
       scr.admin_note,
       scr.approved_by_user_id,
       scr.approved_at,
-      scr.created_at
+      scr.created_at,
+      c.name AS clinic_name
     FROM staff_change_requests scr
+    INNER JOIN clinics c ON c.id = scr.clinic_id
     WHERE scr.id = $1
     LIMIT 1
   `;
@@ -192,6 +194,52 @@ async function findUserById(userId, client = null) {
   return result.rows[0] || null;
 }
 
+async function findUserByClinicAndEmail(clinicId, email, client = null) {
+  const query = `
+    SELECT
+      id,
+      clinic_id,
+      full_name,
+      email::text AS email,
+      phone,
+      role,
+      status,
+      must_reset_password,
+      created_at
+    FROM users
+    WHERE clinic_id = $1
+      AND lower(email::text) = lower($2)
+    LIMIT 1
+  `;
+
+  const result = await db.query(query, [clinicId, email], client);
+  return result.rows[0] || null;
+}
+
+async function findPendingInvitableUserByClinicEmailRole(clinicId, email, role, client = null) {
+  const query = `
+    SELECT
+      id,
+      clinic_id,
+      full_name,
+      email::text AS email,
+      phone,
+      role,
+      status,
+      must_reset_password,
+      created_at
+    FROM users
+    WHERE clinic_id = $1
+      AND lower(email::text) = lower($2)
+      AND role = $3
+      AND status = 'pending_invite'
+    LIMIT 1
+  `;
+
+  const result = await db.query(query, [clinicId, email, role], client);
+  return result.rows[0] || null;
+}
+
 async function createPendingUser(input, client = null) {
   const query = `
     INSERT INTO users (
@@ -252,7 +300,6 @@ async function createInvite(input, client = null) {
       token_hash,
       invite_status,
       expires_at,
-      sent_at,
       created_by_user_id
     )
     VALUES (
@@ -263,7 +310,6 @@ async function createInvite(input, client = null) {
       $5,
       'pending',
       $6,
-      NOW(),
       $7
     )
     RETURNING
@@ -294,6 +340,67 @@ async function createInvite(input, client = null) {
   );
 
   return result.rows[0];
+}
+
+async function findLatestPendingInviteByUserId(userId, client = null) {
+  const query = `
+    SELECT
+      ui.id,
+      ui.clinic_id,
+      ui.user_id,
+      ui.email::text AS email,
+      ui.role,
+      ui.token_hash,
+      ui.invite_status,
+      ui.expires_at,
+      ui.sent_at,
+      ui.used_at,
+      ui.created_by_user_id,
+      ui.created_at
+    FROM user_invites ui
+    WHERE ui.user_id = $1
+      AND ui.invite_status = 'pending'
+    ORDER BY ui.created_at DESC, ui.id DESC
+    LIMIT 1
+  `;
+
+  const result = await db.query(query, [userId], client);
+  return result.rows[0] || null;
+}
+
+async function revokePendingInvitesForUser(userId, client = null) {
+  const query = `
+    UPDATE user_invites
+    SET
+      invite_status = 'revoked'
+    WHERE user_id = $1
+      AND invite_status = 'pending'
+  `;
+
+  return db.query(query, [userId], client);
+}
+
+async function markInviteSent(inviteId, client = null) {
+  const query = `
+    UPDATE user_invites
+    SET sent_at = NOW()
+    WHERE id = $1
+    RETURNING
+      id,
+      clinic_id,
+      user_id,
+      email::text AS email,
+      role,
+      invite_status,
+      expires_at,
+      sent_at,
+      used_at,
+      created_by_user_id,
+      created_at
+  `;
+
+  const result = await db.query(query, [inviteId], client);
+  return result.rows[0] || null;
 }
 
 async function deactivateUserAsRemoved(input, client = null) {
@@ -341,7 +448,12 @@ module.exports = {
   createRequest,
   updateDecision,
   findUserById,
+  findUserByClinicAndEmail,
+  findPendingInvitableUserByClinicEmailRole,
   createPendingUser,
   createInvite,
+  findLatestPendingInviteByUserId,
+  revokePendingInvitesForUser,
+  markInviteSent,
   deactivateUserAsRemoved,
 };

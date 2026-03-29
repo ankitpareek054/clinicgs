@@ -1,3 +1,5 @@
+import { api, extractApiData } from "../api/api";
+
 export function isOwnerLike(user) {
   return user?.role === "owner" || user?.role === "super_admin";
 }
@@ -37,11 +39,7 @@ export function normalizeSessionPayload(payload) {
 
   return {
     id: rawUser.id,
-    fullName:
-      rawUser.full_name ||
-      rawUser.fullName ||
-      rawUser.name ||
-      "",
+    fullName: rawUser.full_name || rawUser.fullName || rawUser.name || "",
     email: rawUser.email || "",
     role: rawUser.role,
     clinicId: rawUser.clinic_id ?? rawUser.clinicId ?? null,
@@ -51,5 +49,37 @@ export function normalizeSessionPayload(payload) {
       rawUser.clinic?.name ||
       "",
     status: rawUser.status || "",
+    mustResetPassword:
+      rawUser.must_reset_password ??
+      rawUser.mustResetPassword ??
+      false,
   };
+}
+
+export async function getInviteByToken(token) {
+  const payload = await api.get(`/auth/invites/${encodeURIComponent(token)}`);
+  return extractApiData(payload, null);
+}
+
+export async function acceptInvite(input) {
+  const payload = await api.post("/auth/invites/accept", input);
+  return normalizeSessionPayload(extractApiData(payload, null));
+}
+
+export async function requestPasswordReset(input) {
+  const payload = await api.post("/auth/password/forgot", {
+    email: String(input?.email || "").trim(),
+  });
+
+  return extractApiData(payload, { success: true });
+}
+
+export async function resetPassword(input) {
+  const payload = await api.post("/auth/password/reset", {
+    token: String(input?.token || "").trim(),
+    password: input?.password || "",
+    confirmPassword: input?.confirmPassword || "",
+  });
+
+  return extractApiData(payload, { success: true });
 }

@@ -52,10 +52,30 @@ async function acceptInvite(req, res) {
   });
 }
 
+async function requestPasswordReset(req, res) {
+  await authService.requestPasswordReset(req.body);
+
+  return sendSuccess(res, {
+    message: 'If the email exists in our system, a password reset link has been sent.',
+    data: { success: true },
+  });
+}
+
+async function resetPassword(req, res) {
+  await authService.resetPassword(req.body);
+
+  return sendSuccess(res, {
+    message: 'Password reset successful.',
+    data: { success: true },
+  });
+}
+
 module.exports = {
   login,
   logout,
   me,
   getInviteByToken,
   acceptInvite,
+  requestPasswordReset,
+  resetPassword,
 };

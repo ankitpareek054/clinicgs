@@ -1,3 +1,4 @@
+
 const { z } = require('zod');
 
 const requestIdParamSchema = z.object({
@@ -104,9 +105,17 @@ const decideStaffRequestSchema = z.object({
   adminNote: z.string().trim().max(1000).nullable().optional(),
 });
 
+const resendInviteSchema = z.object({
+  clinicId: z.coerce.number().int().positive().optional(),
+  clinicName: z.string().trim().min(1).max(255).optional(),
+  email: z.string().trim().email(),
+  role: z.enum(['owner', 'receptionist']),
+});
+
 module.exports = {
   requestIdParamSchema,
   listStaffRequestsQuerySchema,
   createStaffRequestSchema,
   decideStaffRequestSchema,
+  resendInviteSchema,
 };

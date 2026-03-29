@@ -8,6 +8,7 @@ const {
   listStaffRequestsQuerySchema,
   createStaffRequestSchema,
   decideStaffRequestSchema,
+  resendInviteSchema,
 } = require('./staff-requests.validators');
 
 const router = express.Router();
@@ -24,6 +25,12 @@ router.post(
   '/',
   validate({ body: createStaffRequestSchema }),
   asyncHandler(staffRequestsController.createRequest)
+);
+
+router.post(
+  '/resend-invite',
+  validate({ body: resendInviteSchema }),
+  asyncHandler(staffRequestsController.resendInvite)
 );
 
 router.patch(
