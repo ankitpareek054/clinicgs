@@ -49,6 +49,22 @@ const STATUS_UPDATE_OPTIONS = [
 
 
 
+const CLINIC_WORKSPACE_LINKS = [
+
+  { key: "profile", label: "Clinic Profile", path: "/clinic-profile" },
+
+  { key: "settings", label: "Operational Settings", path: "/clinic-settings" },
+
+  { key: "integrations", label: "Integrations", path: "/integrations" },
+
+  { key: "staff", label: "Staff", path: "/staff" },
+
+  { key: "services", label: "Services", path: "/services" },
+
+];
+
+
+
 const EMPTY_CREATE_FORM = {
 
   name: "",
@@ -245,7 +261,7 @@ function normalizeClinicContext(clinic) {
 
 
 
-function sortClinics(clinics, selectedContextClinicId) {
+function sortClinics(clinics, focusedClinicId) {
 
   const priorityRank = {
 
@@ -265,15 +281,15 @@ function sortClinics(clinics, selectedContextClinicId) {
 
   return [...clinics].sort((left, right) => {
 
-    const leftIsContext = Number(left?.id) === Number(selectedContextClinicId);
+    const leftIsFocused = Number(left?.id) === Number(focusedClinicId);
 
-    const rightIsContext = Number(right?.id) === Number(selectedContextClinicId);
+    const rightIsFocused = Number(right?.id) === Number(focusedClinicId);
 
 
 
-    if (leftIsContext && !rightIsContext) return -1;
+    if (leftIsFocused && !rightIsFocused) return -1;
 
-    if (!leftIsContext && rightIsContext) return 1;
+    if (!leftIsFocused && rightIsFocused) return 1;
 
 
 
@@ -333,8 +349,6 @@ export default function ClinicsPage() {
 
     setAdminClinic,
 
-    clearAdminClinic,
-
   } = auth;
 
 
@@ -342,12 +356,6 @@ export default function ClinicsPage() {
   const safeSetAdminClinic =
 
     typeof setAdminClinic === "function" ? setAdminClinic : () => null;
-
-
-
-  const safeClearAdminClinic =
-
-    typeof clearAdminClinic === "function" ? clearAdminClinic : () => {};
 
 
 
@@ -395,7 +403,7 @@ export default function ClinicsPage() {
 
   const isSuperAdmin = user?.role === "super_admin";
 
-  const currentContextClinicId = selectedAdminClinic?.id ?? null;
+  const currentFocusedClinicId = selectedAdminClinic?.id ?? null;
 
 
 
@@ -493,9 +501,9 @@ export default function ClinicsPage() {
 
   const sortedClinics = useMemo(() => {
 
-    return sortClinics(clinics, currentContextClinicId);
+    return sortClinics(clinics, currentFocusedClinicId);
 
-  }, [clinics, currentContextClinicId]);
+  }, [clinics, currentFocusedClinicId]);
 
 
 
@@ -521,13 +529,13 @@ export default function ClinicsPage() {
 
     if (!selectedStillExists) {
 
-      const preferredId = currentContextClinicId || sortedClinics[0]?.id || null;
+      const preferredId = currentFocusedClinicId || sortedClinics[0]?.id || null;
 
       setSelectedClinicId(preferredId);
 
     }
 
-  }, [currentContextClinicId, selectedClinicId, sortedClinics]);
+  }, [currentFocusedClinicId, selectedClinicId, sortedClinics]);
 
 
 
@@ -535,19 +543,19 @@ export default function ClinicsPage() {
 
     if (
 
-      currentContextClinicId &&
+      currentFocusedClinicId &&
 
-      Number(currentContextClinicId) !== Number(selectedClinicId) &&
+      Number(currentFocusedClinicId) !== Number(selectedClinicId) &&
 
-      sortedClinics.some((clinic) => Number(clinic.id) === Number(currentContextClinicId))
+      sortedClinics.some((clinic) => Number(clinic.id) === Number(currentFocusedClinicId))
 
     ) {
 
-      setSelectedClinicId(currentContextClinicId);
+      setSelectedClinicId(currentFocusedClinicId);
 
     }
 
-  }, [currentContextClinicId, selectedClinicId, sortedClinics]);
+  }, [currentFocusedClinicId, selectedClinicId, sortedClinics]);
 
 
 
@@ -755,7 +763,25 @@ export default function ClinicsPage() {
 
 
 
-    if (!selectedClinic) {
+    if (!selectedClinic || statusDraft === selectedClinic.status) {
+
+      return;
+
+    }
+
+
+
+    const nextStatusLabel = humanizeLabel(statusDraft, "Unknown");
+
+    const confirmed = window.confirm(
+
+      `Change ${getClinicDisplayName(selectedClinic)} to ${nextStatusLabel}?`
+
+    );
+
+
+
+    if (!confirmed) {
 
       return;
 
@@ -843,40 +869,6 @@ export default function ClinicsPage() {
 
 
 
-  function handleUseClinicContext(clinic) {
-
-    if (!clinic) return;
-
-
-
-    const nextContext = normalizeClinicContext(clinic);
-
-
-
-    if (!nextContext) return;
-
-
-
-    safeSetAdminClinic(nextContext);
-
-    setSelectedClinicId(clinic.id);
-
-    setNotice(`Admin context switched to ${getClinicDisplayName(clinic)}.`);
-
-  }
-
-
-
-  function handleClearClinicContext() {
-
-    safeClearAdminClinic();
-
-    setNotice("Admin context reset to all clinics.");
-
-  }
-
-
-
   function handleOpenClinicWorkspace(path) {
 
     if (!selectedClinic) return;
@@ -907,13 +899,13 @@ export default function ClinicsPage() {
 
         title="Loading clinics hub"
 
-        description="Checking super-admin access and preparing the platform clinic workspace."
+        description="Checking super-admin access and preparing the clinic management hub."
 
         points={[
 
           "Verifying super-admin access",
 
-          "Preparing cross-clinic controls",
+          "Preparing clinic controls",
 
           "Keeping owner and receptionist flows untouched",
 
@@ -957,9 +949,9 @@ export default function ClinicsPage() {
 
   const selectedClinicAddress = buildAddress(selectedClinic);
 
-  const isSelectedClinicContextActive =
+  const isSelectedClinicFocused =
 
-    Number(selectedClinic?.id) === Number(currentContextClinicId);
+    Number(selectedClinic?.id) === Number(currentFocusedClinicId);
 
 
 
@@ -981,7 +973,7 @@ export default function ClinicsPage() {
 
               Central clinic management for listing, creation, clinic status
 
-              control, and selected-clinic admin drilldowns.
+              control, and clinic-specific page access.
 
             </p>
 
@@ -1117,9 +1109,9 @@ export default function ClinicsPage() {
 
             <p className="clinics-subtle">
 
-              This flow uses the real clinic create API and shows the clinic,
+              This uses the real clinic create API and shows the clinic, owner,
 
-              owner, invite, and default public form data returned by the backend.
+              invite, and default public form data returned by the backend.
 
             </p>
 
@@ -1541,7 +1533,9 @@ export default function ClinicsPage() {
 
           <p className="clinics-subtle">
 
-            Apply filters deliberately instead of firing a request on every keystroke.
+            Apply filters deliberately instead of firing a request on every
+
+            keystroke.
 
           </p>
 
@@ -1703,7 +1697,9 @@ export default function ClinicsPage() {
 
                 <p className="clinics-subtle">
 
-                  Select a clinic to inspect details or set the active admin context.
+                  Select a clinic to inspect details and open clinic-specific
+
+                  pages.
 
                 </p>
 
@@ -1723,9 +1719,9 @@ export default function ClinicsPage() {
 
                 const isActive = Number(clinic.id) === Number(selectedClinicId);
 
-                const isContextClinic =
+                const isFocusedClinic =
 
-                  Number(clinic.id) === Number(currentContextClinicId);
+                  Number(clinic.id) === Number(currentFocusedClinicId);
 
 
 
@@ -1755,11 +1751,11 @@ export default function ClinicsPage() {
 
                       <div className="clinics-inline-chip-row">
 
-                        {isContextClinic ? (
+                        {isFocusedClinic ? (
 
                           <span className="small-label clinics-context-chip">
 
-                            Active context
+                            Current focus
 
                           </span>
 
@@ -1827,11 +1823,11 @@ export default function ClinicsPage() {
 
 
 
-                      {isSelectedClinicContextActive ? (
+                      {isSelectedClinicFocused ? (
 
                         <span className="small-label clinics-context-chip">
 
-                          Current admin context
+                          Current focus
 
                         </span>
 
@@ -1851,53 +1847,11 @@ export default function ClinicsPage() {
 
                     <p className="clinics-subtle">
 
-                      Set this clinic as active context before opening clinic-specific
+                      Review clinic details, update status, and open clinic-specific
 
-                      admin pages.
+                      pages from here.
 
                     </p>
-
-                  </div>
-
-
-
-                  <div className="clinics-header-actions">
-
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button clinics-primary-button"
-
-                      onClick={() => handleUseClinicContext(selectedClinic)}
-
-                      disabled={isSelectedClinicContextActive}
-
-                    >
-
-                      {isSelectedClinicContextActive
-
-                        ? "Context already active"
-
-                        : "Use clinic context"}
-
-                    </button>
-
-
-
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button"
-
-                      onClick={handleClearClinicContext}
-
-                    >
-
-                      Clear context
-
-                    </button>
 
                   </div>
 
@@ -2095,13 +2049,13 @@ export default function ClinicsPage() {
 
                   <div className="stack-sm">
 
-                    <span className="small-label">Open clinic workspace</span>
+                    <span className="small-label">Open clinic pages</span>
 
                     <p className="clinics-subtle">
 
-                      These routes become selected-clinic admin drilldowns. Opening
+                      Opening any of these pages will automatically keep this clinic
 
-                      any of them will first set the current clinic as admin context.
+                      as the current focus.
 
                     </p>
 
@@ -2111,83 +2065,25 @@ export default function ClinicsPage() {
 
                   <div className="clinics-link-row">
 
-                    <button
+                    {CLINIC_WORKSPACE_LINKS.map((item) => (
 
-                      type="button"
+                      <button
 
-                      className="secondary-button compact-button"
+                        key={item.key}
 
-                      onClick={() => handleOpenClinicWorkspace("/clinic-profile")}
+                        type="button"
 
-                    >
+                        className="secondary-button compact-button"
 
-                      Clinic Profile
+                        onClick={() => handleOpenClinicWorkspace(item.path)}
 
-                    </button>
+                      >
 
+                        {item.label}
 
+                      </button>
 
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button"
-
-                      onClick={() => handleOpenClinicWorkspace("/clinic-settings")}
-
-                    >
-
-                      Operational Settings
-
-                    </button>
-
-
-
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button"
-
-                      onClick={() => handleOpenClinicWorkspace("/integrations")}
-
-                    >
-
-                      Integrations
-
-                    </button>
-
-
-
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button"
-
-                      onClick={() => handleOpenClinicWorkspace("/staff")}
-
-                    >
-
-                      Staff
-
-                    </button>
-
-
-
-                    <button
-
-                      type="button"
-
-                      className="secondary-button compact-button"
-
-                      onClick={() => handleOpenClinicWorkspace("/services")}
-
-                    >
-
-                      Services
-
-                    </button>
+                    ))}
 
                   </div>
 
@@ -2630,4 +2526,3 @@ export default function ClinicsPage() {
   );
 
 }
-

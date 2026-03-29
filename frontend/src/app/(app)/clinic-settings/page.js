@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -158,12 +159,12 @@ function mergeSavedSettings(currentSettings, payload, responseData) {
 function getWorkspaceCopy(user, selectedAdminClinic) {
   if (user?.role === "super_admin") {
     return {
-      eyebrow: "Super admin selected-clinic workspace",
+      eyebrow: "Super admin clinic management",
       description: selectedAdminClinic?.name
-        ? `Manage operational settings for ${selectedAdminClinic.name} using the active clinic context.`
-        : "Manage operational settings for the currently selected clinic.",
+        ? `Manage operational settings for ${selectedAdminClinic.name}.`
+        : "Manage operational settings for the selected clinic.",
       loadingDescription:
-        "Checking super-admin clinic context and preparing clinic operational settings.",
+        "Checking super-admin clinic access and preparing clinic operational settings.",
     };
   }
 
@@ -178,12 +179,7 @@ function getWorkspaceCopy(user, selectedAdminClinic) {
 
 export default function ClinicSettingsPage() {
   const router = useRouter();
-  const {
-    user,
-    isBootstrapping,
-    selectedAdminClinic = null,
-    clearAdminClinic,
-  } = useAuth();
+  const { user, isBootstrapping, selectedAdminClinic = null } = useAuth();
 
   const [settings, setSettings] = useState(null);
   const [form, setForm] = useState(makeInitialForm(null));
@@ -203,15 +199,8 @@ export default function ClinicSettingsPage() {
     [user, selectedAdminClinic]
   );
 
-  const safeClearAdminClinic =
-    typeof clearAdminClinic === "function" ? clearAdminClinic : () => {};
-
   useEffect(() => {
-    if (
-      !isBootstrapping &&
-      user &&
-      !canUseOperationalSettingsPage(user)
-    ) {
+    if (!isBootstrapping && user && !canUseOperationalSettingsPage(user)) {
       router.replace(isOwnerLike(user) ? "/dashboard" : "/my-tasks");
     }
   }, [isBootstrapping, router, user]);
@@ -311,7 +300,10 @@ export default function ClinicSettingsPage() {
       return "Review request delay must be a whole number 0 or greater.";
     }
 
-    if (String(form.googleReviewLink).trim() !== "" && !isValidUrl(form.googleReviewLink)) {
+    if (
+      String(form.googleReviewLink).trim() !== "" &&
+      !isValidUrl(form.googleReviewLink)
+    ) {
       return "Google review link must be a valid URL.";
     }
 
@@ -376,11 +368,6 @@ export default function ClinicSettingsPage() {
     setForm(makeInitialForm(settings));
     setError("");
     setNotice("");
-  }
-
-  function handleClearClinicContext() {
-    safeClearAdminClinic();
-    router.replace("/dashboard");
   }
 
   function buildUpdatePayload() {
@@ -484,8 +471,8 @@ export default function ClinicSettingsPage() {
           isSuperAdmin
             ? [
                 "Verifying super-admin access",
-                "Checking selected clinic context",
-                "Preparing operational settings controls",
+                "Loading selected clinic settings",
+                "Preparing operational controls",
               ]
             : [
                 "Verifying owner access",
@@ -508,7 +495,7 @@ export default function ClinicSettingsPage() {
         description="Operational Settings is available only to clinic owners and super admin."
         points={[
           "Owners manage their clinic settings here",
-          "Super admin uses the selected clinic context here",
+          "Super admin manages one clinic at a time here",
           "Receptionists stay focused on operational workflows",
         ]}
       />
@@ -519,11 +506,11 @@ export default function ClinicSettingsPage() {
     return (
       <PagePlaceholder
         title="Choose a clinic first"
-        description="Select a clinic in the admin workspace before opening Operational Settings."
+        description="Open Clinics, select the clinic you want to manage, and then open Operational Settings from there."
         points={[
-          "Use the Clinics workspace or another clinic-linked admin page",
-          "Set the clinic as the active admin context",
-          "Return here to manage that clinic’s operational rules",
+          "Go to Clinics from the sidebar",
+          "Choose the clinic you want to manage",
+          "Open Operational Settings from the clinic action panel",
         ]}
       />
     );
@@ -540,6 +527,16 @@ export default function ClinicSettingsPage() {
           </div>
 
           <div className="settings-header-actions">
+            {isSuperAdmin ? (
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() => router.push("/clinics")}
+              >
+                Back to Clinics
+              </button>
+            ) : null}
+
             <button
               type="button"
               className="secondary-button compact-button"
@@ -577,13 +574,13 @@ export default function ClinicSettingsPage() {
       {isSuperAdmin ? (
         <section className="page-card stack-sm">
           <div className="stack-sm">
-            <span className="small-label">Admin clinic context</span>
+            <span className="small-label">Selected clinic</span>
             <strong className="settings-context-title">
               {selectedAdminClinic?.name || "Selected clinic"}
             </strong>
             <p className="settings-subtle">
-              This page edits the currently selected clinic’s operational rules without
-              changing the owner workflow.
+              Manage this clinic’s operational rules here. Use the links below to move
+              between clinic-specific pages.
             </p>
           </div>
 
@@ -593,7 +590,7 @@ export default function ClinicSettingsPage() {
               className="secondary-button compact-button"
               onClick={() => router.push("/clinic-profile")}
             >
-              Open clinic profile
+              Clinic Profile
             </button>
 
             <button
@@ -601,16 +598,23 @@ export default function ClinicSettingsPage() {
               className="secondary-button compact-button"
               onClick={() => router.push("/staff")}
             >
-              Open clinic staff
+              Staff
             </button>
 
             <button
               type="button"
               className="secondary-button compact-button"
-              onClick={handleClearClinicContext}
-              disabled={isSaving}
+              onClick={() => router.push("/services")}
             >
-              Clear selected clinic
+              Services
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={() => router.push("/clinics")}
+            >
+              Back to Clinics
             </button>
           </div>
         </section>
@@ -638,7 +642,9 @@ export default function ClinicSettingsPage() {
         <article className="metric-card">
           <span className="small-label">Receptionist archive</span>
           <strong>{stats.archivePermission}</strong>
-          <p className="settings-subtle">Clinic-level archive permission for receptionists.</p>
+          <p className="settings-subtle">
+            Clinic-level archive permission for receptionists.
+          </p>
         </article>
       </section>
 
@@ -651,7 +657,8 @@ export default function ClinicSettingsPage() {
           <div className="stack-sm">
             <span className="small-label">Operational settings unavailable</span>
             <p className="settings-subtle">
-              We could not find clinic-level operational settings for this clinic right now.
+              We could not find clinic-level operational settings for this clinic right
+              now.
             </p>
           </div>
 

@@ -100,6 +100,39 @@ export function SessionProvider({ children }) {
     return normalizedClinic;
   }, []);
 
+  const syncAdminClinicForUser = useCallback(
+    (nextUser) => {
+      if (!nextUser || nextUser.role !== "super_admin") {
+        clearAdminClinic();
+        return null;
+      }
+
+      const storedClinic = readStoredAdminClinic();
+
+      if (!storedClinic) {
+        setSelectedAdminClinic(null);
+        return null;
+      }
+
+      setSelectedAdminClinic((currentClinic) => {
+        if (
+          currentClinic &&
+          currentClinic.id === storedClinic.id &&
+          currentClinic.name === storedClinic.name &&
+          currentClinic.status === storedClinic.status &&
+          currentClinic.city === storedClinic.city
+        ) {
+          return currentClinic;
+        }
+
+        return storedClinic;
+      });
+
+      return storedClinic;
+    },
+    [clearAdminClinic]
+  );
+
   const refreshSession = useCallback(async () => {
     try {
       const payload = await api.get("/auth/me");
@@ -111,6 +144,7 @@ export function SessionProvider({ children }) {
 
       setUser(normalizedUser);
       setError("");
+      syncAdminClinicForUser(normalizedUser);
       return normalizedUser;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -124,7 +158,7 @@ export function SessionProvider({ children }) {
       setError(err.message || "Could not load your session.");
       throw err;
     }
-  }, [clearAdminClinic]);
+  }, [clearAdminClinic, syncAdminClinicForUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,12 +171,14 @@ export function SessionProvider({ children }) {
         const normalizedUser = normalizeSessionPayload(payload);
         setUser(normalizedUser);
         setError("");
+        syncAdminClinicForUser(normalizedUser);
       } catch (err) {
         if (cancelled) return;
 
         if (err instanceof ApiError && err.status === 401) {
           setUser(null);
           setError("");
+          clearAdminClinic();
         } else {
           setUser(null);
           setError(err.message || "Could not load your session.");
@@ -159,7 +195,7 @@ export function SessionProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clearAdminClinic, syncAdminClinicForUser]);
 
   useEffect(() => {
     if (isBootstrapping) {
@@ -175,20 +211,21 @@ export function SessionProvider({ children }) {
 
     if (!storedClinic) {
       if (selectedAdminClinic) {
-        clearAdminClinic();
+        setSelectedAdminClinic(null);
       }
       return;
     }
 
-    if (selectedAdminClinic?.id !== storedClinic.id) {
+    if (
+      !selectedAdminClinic ||
+      selectedAdminClinic.id !== storedClinic.id ||
+      selectedAdminClinic.name !== storedClinic.name ||
+      selectedAdminClinic.status !== storedClinic.status ||
+      selectedAdminClinic.city !== storedClinic.city
+    ) {
       setSelectedAdminClinic(storedClinic);
     }
-  }, [
-    user?.role,
-    isBootstrapping,
-    selectedAdminClinic,
-    clearAdminClinic,
-  ]);
+  }, [user?.role, isBootstrapping, selectedAdminClinic, clearAdminClinic]);
 
   async function login(credentials) {
     setError("");
@@ -235,6 +272,7 @@ export function SessionProvider({ children }) {
       logout,
       refreshSession,
       selectedAdminClinic,
+      selectedAdminClinicId: selectedAdminClinic?.id ?? null,
       adminWorkspaceMode,
       effectiveClinicId,
       effectiveClinicName,

@@ -455,14 +455,7 @@ function RankedListSection({
 
 export default function DashboardPage() {
   const router = useRouter();
-  const {
-    user,
-    isBootstrapping,
-    selectedAdminClinic,
-    adminWorkspaceMode,
-    setAdminClinic,
-    clearAdminClinic,
-  } = useAuth();
+  const { user, isBootstrapping, setAdminClinic, clearAdminClinic } = useAuth();
 
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -763,8 +756,9 @@ export default function DashboardPage() {
     router.push(path);
   }
 
-  function handleClearSelectedClinic() {
+  function openGlobalAdminPage(path) {
     safeClearAdminClinic();
+    router.push(path);
   }
 
   if (isBootstrapping) {
@@ -833,174 +827,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
-
-      {isSuperAdmin ? (
-        <section className="page-card stack admin-dashboard-toolbar">
-          <div style={sectionHeaderStyle}>
-            <div className="stack-sm">
-              <span className="small-label">Admin workspace context</span>
-              <h2 className="section-title">
-                {selectedAdminClinic?.name || "All clinics mode"}
-              </h2>
-              <p style={subtleTextStyle}>
-                {selectedAdminClinic
-                  ? "A clinic is selected for clinic-scoped admin pages. Dashboard metrics below remain platform-wide until the clinic dashboard endpoint accepts an explicit clinic id."
-                  : "You are in platform-wide mode. Use Clinics Hub or any clinic row below to enter a selected-clinic workspace."}
-              </p>
-            </div>
-
-            <div style={actionRowStyle}>
-              <button
-                type="button"
-                className="secondary-button compact-button"
-                onClick={() => goToAdminPath("/clinics")}
-              >
-                Open Clinics Hub
-              </button>
-
-              {selectedAdminClinic ? (
-                <button
-                  type="button"
-                  className="secondary-button compact-button"
-                  onClick={handleClearSelectedClinic}
-                >
-                  Clear selected clinic
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {selectedAdminClinic ? (
-            <div className="admin-context-meta-grid">
-              <article className="admin-context-meta-card">
-                <span className="small-label">Selected clinic</span>
-                <strong>
-                  {selectedAdminClinic.name || "Clinic workspace"}
-                </strong>
-                <p style={subtleTextStyle}>
-                  {humanizeLabel(selectedAdminClinic.status, "Status unknown")}
-                </p>
-              </article>
-
-              <article className="admin-context-meta-card">
-                <span className="small-label">Workspace mode</span>
-                <strong>
-                  {adminWorkspaceMode === "selected_clinic"
-                    ? "Selected clinic"
-                    : "All clinics"}
-                </strong>
-                <p style={subtleTextStyle}>
-                  {selectedAdminClinic?.city || "No city available"}
-                </p>
-              </article>
-            </div>
-          ) : null}
-
-          <div className="quick-action-grid">
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/clinics")}
-            >
-              Clinics Hub
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/staff-requests")}
-            >
-              Open staff requests
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/support")}
-            >
-              Open support
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/notifications")}
-            >
-              Open notifications
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/clinic-profile")}
-              disabled={!selectedAdminClinic}
-            >
-              Open clinic profile
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/clinic-settings")}
-              disabled={!selectedAdminClinic}
-            >
-              Open clinic settings
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/staff")}
-              disabled={!selectedAdminClinic}
-            >
-              Open clinic staff
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/integrations")}
-              disabled={!selectedAdminClinic}
-            >
-              Open integrations
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => goToAdminPath("/services")}
-              disabled={!selectedAdminClinic}
-            >
-              Open services
-            </button>
-          </div>
-
-          {selectedAdminClinic ? (
-            <div className="context-chip-row">
-              <span
-                className={`status-pill ${getStatusTone(
-                  selectedAdminClinic.status,
-                )}`}
-              >
-                {humanizeLabel(selectedAdminClinic.status, "Selected clinic")}
-              </span>
-
-              <span className="small-label">
-                Workspace mode:{" "}
-                {adminWorkspaceMode === "selected_clinic"
-                  ? "Selected clinic"
-                  : "All clinics"}
-              </span>
-
-              {selectedAdminClinic.city ? (
-                <span className="small-label">
-                  City: {selectedAdminClinic.city}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
 
       {error ? <div className="error-banner">{error}</div> : null}
 
@@ -1195,7 +1021,7 @@ export default function DashboardPage() {
                   className="secondary-button compact-button"
                   onClick={() => goToAdminPath("/clinics")}
                 >
-                  Open Clinics Hub
+                  Open Clinics
                 </button>
               </div>
             </div>
@@ -1236,7 +1062,7 @@ export default function DashboardPage() {
                             openClinicWorkspace(clinic, "/clinic-profile")
                           }
                         >
-                          Open workspace
+                          Open profile
                         </button>
                         <button
                           type="button"
@@ -1329,7 +1155,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   className="secondary-button compact-button"
-                  onClick={() => goToAdminPath("/staff-requests")}
+                  onClick={() => openGlobalAdminPage("/staff-requests")}
                 >
                   Open queue
                 </button>
@@ -1376,7 +1202,9 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               className="secondary-button compact-button"
-                              onClick={() => goToAdminPath("/staff-requests")}
+                              onClick={() =>
+                                openGlobalAdminPage("/staff-requests")
+                              }
                             >
                               Review
                             </button>
@@ -1453,7 +1281,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   className="secondary-button compact-button"
-                  onClick={() => goToAdminPath("/support")}
+                  onClick={() => openGlobalAdminPage("/support")}
                 >
                   Open support
                 </button>
@@ -1489,7 +1317,7 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               className="secondary-button compact-button"
-                              onClick={() => goToAdminPath("/support")}
+                              onClick={() => openGlobalAdminPage("/support")}
                             >
                               View queue
                             </button>
@@ -1537,7 +1365,7 @@ export default function DashboardPage() {
                   className="secondary-button compact-button"
                   onClick={() => goToAdminPath("/clinics")}
                 >
-                  Open Clinics Hub
+                  Open Clinics
                 </button>
               </div>
             </div>
@@ -1587,7 +1415,7 @@ export default function DashboardPage() {
                                 openClinicWorkspace(clinic, "/clinic-profile")
                               }
                             >
-                              Open workspace
+                              Open profile
                             </button>
                             <button
                               type="button"
@@ -1629,29 +1457,6 @@ export default function DashboardPage() {
           grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         }
 
-        .admin-dashboard-toolbar {
-          gap: 16px;
-        }
-
-        .section-title {
-          margin: 0;
-          font-size: 1.3rem;
-          line-height: 1.2;
-        }
-
-        .quick-action-grid {
-          display: grid;
-          gap: 12px;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        }
-
-        .context-chip-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
         .context-action-column {
           display: flex;
           flex-wrap: wrap;
@@ -1662,21 +1467,6 @@ export default function DashboardPage() {
         .table-action-row {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .admin-context-meta-grid {
-          display: grid;
-          gap: 16px;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        }
-
-        .admin-context-meta-card {
-          border: 1px solid var(--border);
-          background: var(--surface-soft);
-          border-radius: 14px;
-          padding: 14px;
-          display: grid;
           gap: 8px;
         }
       `}</style>

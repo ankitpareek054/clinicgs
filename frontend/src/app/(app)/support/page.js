@@ -133,7 +133,7 @@ function buildTicketDescription(issueDescription, updates) {
     .filter((entry) => entry?.createdAt && entry?.status && entry?.note)
     .map(
       (entry) =>
-        `[[SUPPORT_UPDATE|${entry.createdAt}|${entry.status}]]\n${entry.note.trim()}`
+        `[[SUPPORT_UPDATE|${entry.createdAt}|${entry.status}]]\n${entry.note.trim()}`,
     )
     .join("\n\n");
 
@@ -161,12 +161,7 @@ function isWithinDateRange(value, fromDate, toDate) {
 
 export default function SupportPage() {
   const router = useRouter();
-  const {
-    user,
-    isBootstrapping,
-    selectedAdminClinic,
-    setAdminClinic,
-  } = useAuth();
+  const { user, isBootstrapping, setAdminClinic } = useAuth();
 
   const isSuperAdmin = user?.role === "super_admin";
   const canCreateTickets = canUseClinicSupport(user);
@@ -214,7 +209,7 @@ export default function SupportPage() {
 
   const clinicOptions = useMemo(() => {
     return [...clinics].sort((a, b) =>
-      String(a?.name || "").localeCompare(String(b?.name || ""))
+      String(a?.name || "").localeCompare(String(b?.name || "")),
     );
   }, [clinics]);
 
@@ -257,7 +252,8 @@ export default function SupportPage() {
       return null;
     }
 
-    const clinicId = ticket.clinicId ?? ticket.clinic_id ?? ticket.clinic?.id ?? null;
+    const clinicId =
+      ticket.clinicId ?? ticket.clinic_id ?? ticket.clinic?.id ?? null;
 
     if (!clinicId) {
       return null;
@@ -278,10 +274,7 @@ export default function SupportPage() {
         clinicFromMap?.status ||
         "",
       city:
-        ticket.clinicCity ||
-        ticket.clinic_city ||
-        clinicFromMap?.city ||
-        "",
+        ticket.clinicCity || ticket.clinic_city || clinicFromMap?.city || "",
     };
   }
 
@@ -344,7 +337,7 @@ export default function SupportPage() {
       filters.ticketType,
       isSuperAdmin,
       user,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -365,38 +358,51 @@ export default function SupportPage() {
     if (isSuperAdmin) {
       if (filters.fromDate || filters.toDate) {
         next = next.filter((ticket) =>
-          isWithinDateRange(ticket.createdAt, filters.fromDate, filters.toDate)
+          isWithinDateRange(ticket.createdAt, filters.fromDate, filters.toDate),
         );
       }
 
       if (filters.unresolvedOnly) {
         next = next.filter(
-          (ticket) => ticket.status === "open" || ticket.status === "in_progress"
+          (ticket) =>
+            ticket.status === "open" || ticket.status === "in_progress",
         );
       }
 
       next.sort((a, b) => {
         if (filters.sortBy === "oldest") {
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
         }
 
         if (filters.sortBy === "recently_updated") {
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          return (
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
         }
 
         if (filters.sortBy === "priority_high_first") {
-          const diff = getPriorityRank(b.priority) - getPriorityRank(a.priority);
+          const diff =
+            getPriorityRank(b.priority) - getPriorityRank(a.priority);
           if (diff !== 0) return diff;
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
         }
 
         if (filters.sortBy === "priority_low_first") {
-          const diff = getPriorityRank(a.priority) - getPriorityRank(b.priority);
+          const diff =
+            getPriorityRank(a.priority) - getPriorityRank(b.priority);
           if (diff !== 0) return diff;
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
         }
 
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       });
     }
 
@@ -422,7 +428,7 @@ export default function SupportPage() {
     }
 
     const ticketStillExists = visibleTickets.some(
-      (ticket) => Number(ticket.id) === Number(selectedTicketId)
+      (ticket) => Number(ticket.id) === Number(selectedTicketId),
     );
 
     if (!ticketStillExists) {
@@ -448,28 +454,21 @@ export default function SupportPage() {
         inProgress: 0,
         resolved: 0,
         closed: 0,
-      }
+      },
     );
   }, [visibleTickets]);
 
   const selectedTicket = useMemo(() => {
     return (
-      visibleTickets.find((ticket) => Number(ticket.id) === Number(selectedTicketId)) ||
-      null
+      visibleTickets.find(
+        (ticket) => Number(ticket.id) === Number(selectedTicketId),
+      ) || null
     );
   }, [selectedTicketId, visibleTickets]);
 
   const selectedTicketParsed = useMemo(() => {
     return parseTicketDescription(selectedTicket?.description || "");
   }, [selectedTicket]);
-
-  const selectedClinicMatchesFilter = useMemo(() => {
-    if (!selectedAdminClinic?.id || !filters.clinicId) {
-      return false;
-    }
-
-    return Number(selectedAdminClinic.id) === Number(filters.clinicId);
-  }, [filters.clinicId, selectedAdminClinic]);
 
   useEffect(() => {
     if (!isSuperAdmin || !selectedTicket) {
@@ -506,13 +505,9 @@ export default function SupportPage() {
     }));
   }
 
-  function resetCreateForm() {
-    setCreateForm(EMPTY_CREATE_FORM);
-  }
-
   function closeCreateForm() {
     setIsCreateOpen(false);
-    resetCreateForm();
+    setCreateForm(EMPTY_CREATE_FORM);
   }
 
   function startEditing(ticket) {
@@ -528,24 +523,6 @@ export default function SupportPage() {
   function stopEditing() {
     setEditingTicketId(null);
     setEditForm(EMPTY_EDIT_FORM);
-  }
-
-  function applySelectedClinicFilter() {
-    if (!selectedAdminClinic?.id) {
-      return;
-    }
-
-    setFilters((current) => ({
-      ...current,
-      clinicId: String(selectedAdminClinic.id),
-    }));
-  }
-
-  function clearClinicFilter() {
-    setFilters((current) => ({
-      ...current,
-      clinicId: "",
-    }));
   }
 
   function activateClinicContext(ticket, nextPath) {
@@ -650,7 +627,9 @@ export default function SupportPage() {
       setError("");
       setNotice("");
 
-      const currentParsed = parseTicketDescription(selectedTicket.description || "");
+      const currentParsed = parseTicketDescription(
+        selectedTicket.description || "",
+      );
       let nextDescription = selectedTicket.description || "";
 
       if (progressNote || statusChanged) {
@@ -667,7 +646,7 @@ export default function SupportPage() {
 
         nextDescription = buildTicketDescription(
           currentParsed.issueDescription,
-          nextUpdates
+          nextUpdates,
         );
       }
 
@@ -736,7 +715,7 @@ export default function SupportPage() {
 
             <p className="support-subtle">
               {isSuperAdmin
-                ? "View all tickets, filter them by clinic/date/priority, set priority yourself, and keep a real progress trail while working tickets."
+                ? "View all tickets, filter them by clinic, date, status, type, or priority, and keep a real progress trail while working tickets."
                 : "Create tickets for bugs, data issues, and workflow blockers. Owners see clinic-wide tickets, while receptionists see the tickets they created."}
             </p>
           </div>
@@ -778,72 +757,13 @@ export default function SupportPage() {
         </div>
       )}
 
-      {isSuperAdmin ? (
-        <section className="page-card stack-sm">
-          <div className="stack-sm">
-            <span className="small-label">Admin clinic context</span>
-            <strong className="support-context-title">
-              {selectedAdminClinic?.name || "All clinics mode"}
-            </strong>
-            <p className="support-subtle">
-              {selectedAdminClinic
-                ? "A clinic is already selected for clinic-scoped admin pages. You can apply it as a support filter here or replace it from any ticket."
-                : "You are reviewing support across all clinics. When needed, activate a clinic from a ticket and jump into that clinic workspace safely."}
-            </p>
-          </div>
-
-          <div className="support-context-actions">
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={applySelectedClinicFilter}
-              disabled={
-                !selectedAdminClinic ||
-                selectedClinicMatchesFilter ||
-                isLoading ||
-                isRefreshing
-              }
-            >
-              {selectedClinicMatchesFilter
-                ? "Selected clinic filter active"
-                : "Use selected clinic filter"}
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={clearClinicFilter}
-              disabled={!filters.clinicId || isLoading || isRefreshing}
-            >
-              Clear clinic filter
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => router.push("/clinic-profile")}
-              disabled={!selectedAdminClinic}
-            >
-              Open selected clinic profile
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button compact-button"
-              onClick={() => router.push("/staff")}
-              disabled={!selectedAdminClinic}
-            >
-              Open selected clinic staff
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       <section className="metrics-grid">
         <article className="metric-card">
           <span className="small-label">Loaded</span>
           <strong>{ticketStats.total}</strong>
-          <p className="support-subtle">Tickets in the current filtered view.</p>
+          <p className="support-subtle">
+            Tickets in the current filtered view.
+          </p>
         </article>
 
         <article className="metric-card">
@@ -870,7 +790,8 @@ export default function SupportPage() {
           <div className="stack-sm">
             <span className="small-label">Create support ticket</span>
             <p className="support-subtle">
-              Use this for bugs, feature requests, data issues, or workflow blockers.
+              Use this for bugs, feature requests, data issues, or workflow
+              blockers.
             </p>
           </div>
 
@@ -880,7 +801,9 @@ export default function SupportPage() {
                 <span>Ticket type</span>
                 <select
                   value={createForm.ticketType}
-                  onChange={(event) => updateCreateForm("ticketType", event.target.value)}
+                  onChange={(event) =>
+                    updateCreateForm("ticketType", event.target.value)
+                  }
                   disabled={isSubmittingCreate}
                 >
                   {TICKET_TYPE_OPTIONS.map((option) => (
@@ -897,7 +820,9 @@ export default function SupportPage() {
               <input
                 type="text"
                 value={createForm.title}
-                onChange={(event) => updateCreateForm("title", event.target.value)}
+                onChange={(event) =>
+                  updateCreateForm("title", event.target.value)
+                }
                 placeholder="Briefly describe the issue"
                 maxLength={200}
                 disabled={isSubmittingCreate}
@@ -909,7 +834,9 @@ export default function SupportPage() {
               <span>Description</span>
               <textarea
                 value={createForm.description}
-                onChange={(event) => updateCreateForm("description", event.target.value)}
+                onChange={(event) =>
+                  updateCreateForm("description", event.target.value)
+                }
                 placeholder="What happened, what you expected, and anything the team should know"
                 rows={6}
                 maxLength={5000}
@@ -944,7 +871,8 @@ export default function SupportPage() {
         <div className="stack-sm">
           <span className="small-label">Filters</span>
           <p className="support-subtle">
-            Narrow the ticket list by clinic, date range, status, type, or priority.
+            Narrow the ticket list by clinic, date range, status, type, or
+            priority.
           </p>
         </div>
 
@@ -1187,7 +1115,9 @@ export default function SupportPage() {
                           {humanizeToken(ticket.ticketType)}
                         </span>
 
-                        <span className={`status-pill ${getStatusTone(ticket.status)}`}>
+                        <span
+                          className={`status-pill ${getStatusTone(ticket.status)}`}
+                        >
                           {humanizeToken(ticket.status)}
                         </span>
 
@@ -1203,7 +1133,9 @@ export default function SupportPage() {
                       </span>
                     </div>
 
-                    <strong className="support-list-card-title">{ticket.title}</strong>
+                    <strong className="support-list-card-title">
+                      {ticket.title}
+                    </strong>
 
                     <div className="support-list-card-meta">
                       <span>#{ticket.id}</span>
@@ -1246,12 +1178,14 @@ export default function SupportPage() {
                         </span>
                       </div>
 
-                      <h3 className="support-ticket-title">{selectedTicket.title}</h3>
+                      <h3 className="support-ticket-title">
+                        {selectedTicket.title}
+                      </h3>
                     </div>
 
                     <span
                       className={`support-priority-badge ${getPriorityTone(
-                        selectedTicket.priority
+                        selectedTicket.priority,
                       )}`}
                     >
                       {humanizeToken(selectedTicket.priority)}
@@ -1260,10 +1194,16 @@ export default function SupportPage() {
 
                   <div className="support-ticket-meta">
                     <span>Ticket #{selectedTicket.id}</span>
-                    <span>Created {formatDateTime(selectedTicket.createdAt)}</span>
-                    <span>Updated {formatDateTime(selectedTicket.updatedAt)}</span>
+                    <span>
+                      Created {formatDateTime(selectedTicket.createdAt)}
+                    </span>
+                    <span>
+                      Updated {formatDateTime(selectedTicket.updatedAt)}
+                    </span>
                     {selectedTicket.resolvedAt ? (
-                      <span>Resolved {formatDateTime(selectedTicket.resolvedAt)}</span>
+                      <span>
+                        Resolved {formatDateTime(selectedTicket.resolvedAt)}
+                      </span>
                     ) : null}
                   </div>
 
@@ -1279,7 +1219,9 @@ export default function SupportPage() {
                     <button
                       type="button"
                       className="secondary-button compact-button"
-                      onClick={() => activateClinicContext(selectedTicket, "/clinic-profile")}
+                      onClick={() =>
+                        activateClinicContext(selectedTicket, "/clinic-profile")
+                      }
                     >
                       Open clinic profile
                     </button>
@@ -1287,7 +1229,9 @@ export default function SupportPage() {
                     <button
                       type="button"
                       className="secondary-button compact-button"
-                      onClick={() => activateClinicContext(selectedTicket, "/staff")}
+                      onClick={() =>
+                        activateClinicContext(selectedTicket, "/staff")
+                      }
                     >
                       Open clinic staff
                     </button>
@@ -1295,7 +1239,9 @@ export default function SupportPage() {
                     <button
                       type="button"
                       className="secondary-button compact-button"
-                      onClick={() => activateClinicContext(selectedTicket, "/integrations")}
+                      onClick={() =>
+                        activateClinicContext(selectedTicket, "/integrations")
+                      }
                     >
                       Open integrations
                     </button>
@@ -1316,7 +1262,8 @@ export default function SupportPage() {
                   <div className="stack-sm">
                     <span className="small-label">Progress trail</span>
                     <p className="support-subtle">
-                      Every save logs what was done and what the current state is.
+                      Every save logs what was done and what the current state
+                      is.
                     </p>
                   </div>
 
@@ -1331,7 +1278,9 @@ export default function SupportPage() {
                             key={`${entry.createdAt}-${index}`}
                           >
                             <div className="support-timeline-item-topline">
-                              <span className={`status-pill ${getStatusTone(entry.status)}`}>
+                              <span
+                                className={`status-pill ${getStatusTone(entry.status)}`}
+                              >
                                 {humanizeToken(entry.status)}
                               </span>
                               <span className="small-label">
@@ -1339,7 +1288,9 @@ export default function SupportPage() {
                               </span>
                             </div>
 
-                            <p className="support-ticket-description">{entry.note}</p>
+                            <p className="support-ticket-description">
+                              {entry.note}
+                            </p>
                           </article>
                         ))}
                     </div>
@@ -1354,12 +1305,15 @@ export default function SupportPage() {
                   <div className="stack-sm">
                     <span className="small-label">Active workspace</span>
                     <p className="support-subtle">
-                      Set the correct priority yourself, move the ticket through status,
-                      and log exactly what work has been done.
+                      Set priority, move the ticket through status, and log
+                      exactly what work has been done.
                     </p>
                   </div>
 
-                  <form className="support-form stack" onSubmit={handleWorkspaceSubmit}>
+                  <form
+                    className="support-form stack"
+                    onSubmit={handleWorkspaceSubmit}
+                  >
                     <div className="support-form-grid">
                       <label className="support-field">
                         <span>Status</span>
@@ -1415,7 +1369,10 @@ export default function SupportPage() {
                       <textarea
                         value={workspaceForm.progressNote}
                         onChange={(event) =>
-                          updateWorkspaceForm("progressNote", event.target.value)
+                          updateWorkspaceForm(
+                            "progressNote",
+                            event.target.value,
+                          )
                         }
                         rows={6}
                         maxLength={5000}
@@ -1452,7 +1409,10 @@ export default function SupportPage() {
             const parsed = parseTicketDescription(ticket.description || "");
 
             return (
-              <article key={ticket.id} className="page-card support-ticket-card">
+              <article
+                key={ticket.id}
+                className="page-card support-ticket-card"
+              >
                 {!isEditing ? (
                   <div className="stack">
                     <div className="support-ticket-header">
@@ -1462,7 +1422,9 @@ export default function SupportPage() {
                             {humanizeToken(ticket.ticketType)}
                           </span>
 
-                          <span className={`status-pill ${getStatusTone(ticket.status)}`}>
+                          <span
+                            className={`status-pill ${getStatusTone(ticket.status)}`}
+                          >
                             {humanizeToken(ticket.status)}
                           </span>
                         </div>
@@ -1493,14 +1455,21 @@ export default function SupportPage() {
                     </div>
                   </div>
                 ) : (
-                  <form className="support-form stack" onSubmit={handleEditSubmit}>
+                  <form
+                    className="support-form stack"
+                    onSubmit={handleEditSubmit}
+                  >
                     <div className="support-ticket-header">
                       <div className="stack-sm">
-                        <span className="small-label">Edit ticket #{ticket.id}</span>
+                        <span className="small-label">
+                          Edit ticket #{ticket.id}
+                        </span>
                         <h3 className="support-ticket-title">{ticket.title}</h3>
                       </div>
 
-                      <span className={`status-pill ${getStatusTone(ticket.status)}`}>
+                      <span
+                        className={`status-pill ${getStatusTone(ticket.status)}`}
+                      >
                         {humanizeToken(ticket.status)}
                       </span>
                     </div>
@@ -1510,7 +1479,9 @@ export default function SupportPage() {
                       <input
                         type="text"
                         value={editForm.title}
-                        onChange={(event) => updateEditForm("title", event.target.value)}
+                        onChange={(event) =>
+                          updateEditForm("title", event.target.value)
+                        }
                         maxLength={200}
                         disabled={isSubmittingEdit}
                         required
@@ -1567,7 +1538,6 @@ export default function SupportPage() {
         }
 
         .support-header-actions,
-        .support-context-actions,
         .support-ticket-actions {
           display: flex;
           align-items: center;
@@ -1578,11 +1548,6 @@ export default function SupportPage() {
         .support-subtle {
           margin: 0;
           color: var(--muted);
-        }
-
-        .support-context-title {
-          color: var(--text);
-          line-height: 1.3;
         }
 
         .support-notice-banner {
